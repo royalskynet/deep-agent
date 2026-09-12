@@ -25,4 +25,12 @@ $HOME/.local/bin/deepclaude -p "$(cat "$f")" --output-format text \
   --max-turns 150
 rc=$?
 echo "$(date '+%F %T') deep-run end rc=$rc $f" >> "$WLOG"
+# #11 摘要防幻觉：收尾附 transcript 客观统计，让最终摘要不是唯一输出。
+TRANS="$(ls -t "$HOME/.deepclaude/config/projects/<cwd-slug>/"*.jsonl 2>/dev/null | head -1)"
+if [[ -n "$TRANS" && -f "$TRANS" ]]; then
+  echo "deep-run transcript: tool_use=$(jq -r 'select(.type=="assistant" and .message) | .message.content[]? | select(.type=="tool_use") | .id' "$TRANS" 2>/dev/null | wc -l | tr -d ' ')"
+  echo "last_tool_result: $(jq -r 'select(.type=="user" and .message) | .message.content[]? | select(.type=="tool_result") | .content' "$TRANS" 2>/dev/null | tail -1 | cut -c1-300)"
+else
+  echo "deep-run transcript: none"
+fi
 exit $rc
