@@ -14,4 +14,4 @@ deep 是自主執行者，不設能力上限：搜尋／枚舉／改檔／git／
 
 ## 判準
 - `$ARGUMENTS` 為空且沒剛出的計畫 → 回問要派什麼。
-- 只有需要 Opus 級權衡的決策留主 session，其餘全派。主 session 口語「派 deep」走 Agent `subagent_type: deep`（純轉發殼）；`/deep` 走本檔 Bash 直呼，可 background。
+- 只有需要 Opus 級權衡的決策留主 session，其餘全派。`/deep` 走本檔 Bash 直呼，可 background。Agent `deep` haiku 殼已于 2026-09-12 退役——派工一律 Bash 裸呼 `deep-run`。

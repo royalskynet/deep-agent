@@ -4,10 +4,11 @@ Standalone repo for the `deep` agent — the default subagent that runs a task
 end-to-end, headless, outside the sandbox, via deepclaude.
 
 `deep` means: hand the raw task text to the deepclaude-backed Claude Code loop and
-let it run to completion with no supervision. Three entry points:
+let it run to completion with no supervision.
 
-- **Agent**: `subagent_type: deep` in a task / subagent dispatch.
-- **`/deep`**: slash command that forwards the task through the `deep` shell.
+Entry points (the Agent/`subagent_type: deep` haiku shell was retired 2026-09-12):
+
+- **`/deep`**: slash command that forwards the task via Bash direct `deep-run`.
 - **Bash direct**: `deep-run <task.md> [cwd]`.
 
 Dependencies: [royalskynet/deepclaude](https://github.com/royalskynet/deepclaude),

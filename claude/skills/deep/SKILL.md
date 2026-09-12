@@ -11,9 +11,8 @@ description: 派工 deep — 像派 sonnet：主 session 出完計畫說「派 d
 - **沒計畫** → scratchpad `deep/<slug>.md` 三段：**任務**（原文＋deep 不可能自己知道的前情：絕對路徑、限制、期望格式）／**驗收**（一條可重跑指令＋期望；想不出寫「自訂驗收並貼輸出」）／**不動**（可省）。
 - 含憑證路徑字串（如 `.creds/*/.env`）用 Write tool 寫，Bash heredoc 會被 creds-egress-guard 攔。
 
-## 派工（兩條路，預設 Agent）
-- **預設：Agent tool `subagent_type: deep`**（`~/.claude/agents/deep.md`，haiku 殼、只有 Bash，像 codex-rescue 一樣純轉發）。prompt 就是任務原文（或「執行 <計畫.md 絕對路徑>」＋驗收一行），殼層原封寫任務檔→裸名 deep-run→回傳 stdout。多一跳 haiku 成本換一句話派工。
-- **Bash 直呼**：主 session 要 `run_in_background` 自己控進度、或要指定 cwd／串多個任務時用。
+## 派工（唯 Bash 裸呼）
+- **Bash 直呼**：主 session 用 `run_in_background` 自己控進度、或指定 cwd／串多個任務。`shell 派 agents/deep.md haiku 殼已于 2026-09-12 退役`。
 - `deep-run <task.md> <cwd>`，**裸名**（絕對路徑不匹配 excludedCommands 會掉回沙箱，deep-run 會 exit 3 提示），單一原子指令（禁 pipe／&&／$()／heredoc 同 call；timeout 600000）。預估 >2 分鐘 → `run_in_background: true`。
 - deep 工具：Bash／Read／Edit／Write／Glob／Grep；`gh` 走 deep-run 注入的 `GH_TOKEN`（kv 鏡像），不靠 keyring。任務不得要求 Agent／WebFetch／WebSearch／MCP。
 - 每轉前綴約 5.5k tokens；長任務照派，成本在 DeepSeek 端。
