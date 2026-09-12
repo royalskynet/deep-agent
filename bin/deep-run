@@ -1,0 +1,28 @@
+#!/bin/bash
+# deep-run <task.md> [cwd] — 沙箱外執行 deepclaude 的唯一入口（settings.json sandbox.excludedCommands）
+# 只 log 路徑與 rc，永不 log 內容或憑證值。
+# 瘦身旗標（2026-09-12 實測）：預設前綴 22,132 → ~5.5k tokens/turn，creds-egress-guard hook 仍生效。
+# 不用 --bare：--bare 依文件 skip hooks，實測 --bare --settings 也不跑 PreToolUse（guard 失效）。
+# GH_TOKEN：gh keyring 在無頭環境會失效，改由 kv 鏡像注入，deep 才能 gh search 找輪子。
+set -u
+# 沙箱防呆：白名單是字面 "deep-run *"，用絕對路徑呼叫會掉回沙箱（node DNS 秒死、偽裝成 502）。
+case "${HTTPS_PROXY:-}" in *localhost:*|*127.0.0.1:*) echo "deep-run: running INSIDE sandbox — call bare 'deep-run', not full path" >&2; exit 3 ;; esac
+f=${1:-}; d=${2:-$HOME/.deepclaude/work}
+WLOG=$HOME/Library/Logs/openclaw/wrappers.log
+case "$f" in /*) ;; *) echo "deep-run: task path must be absolute: $f" >&2; exit 2 ;; esac
+[ -f "$f" ] || { echo "deep-run: task file not found: $f" >&2; exit 2; }
+[ -d "$d" ] || { echo "deep-run: cwd not found: $d" >&2; exit 2; }
+GHK=$HOME/.creds/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt
+[ -r "$GHK" ] && GH_TOKEN=$(cat "$GHK") && export GH_TOKEN
+echo "$(date '+%F %T') deep-run start $f cwd=$d" >> "$WLOG"
+cd "$d"
+$HOME/.local/bin/deepclaude -p "$(cat "$f")" --output-format text \
+  --system-prompt-file $HOME/.deepclaude/config/deep-system.md \
+  --tools Bash,Read,Edit,Write,Glob,Grep \
+  --disable-slash-commands \
+  --strict-mcp-config \
+  --permission-mode bypassPermissions \
+  --max-turns 150
+rc=$?
+echo "$(date '+%F %T') deep-run end rc=$rc $f" >> "$WLOG"
+exit $rc

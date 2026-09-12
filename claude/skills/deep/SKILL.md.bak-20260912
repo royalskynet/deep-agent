@@ -1,0 +1,12 @@
+---
+name: deep
+description: 派工 deep — 把任務外包給 deep 子代理（背後 deepclaude，CheaperInference deepseek-v4-flash-0731），主 session 只拿結論。使用者說「派工 deep」「deep 去查」「/deep」即用。
+---
+# deep 當 sonnet 用
+**deep 就當 sonnet。** 凡 sonnet 能做的任務（搜尋／摘要／多檔比對／枚舉／長跑／設計 — 都行），都可外包給 deep 子代理，省主 session token。不要過度設計判斷「什麼該派、什麼不該」。
+
+## 流程
+1. 用 Agent tool 派 `deep` 子代理（`~/.claude/agents/deep.md`，model:haiku 薄殼），任務原文與範圍（絕對路徑）傳給它。實際推理在子代理內部 `deepclaude`（CheaperInference `deepseek-v4-flash-0731`）那端跑。
+2. deep 只回 ≤300 字結論＋`path:line`，不貼整檔，找不到就說找不到。
+3. 需要比 sonnet 更強（明確 opus 級）的決策才留主 session 或顯式 `model: opus`。
+不做：寫入類任務不派 deep（deepclaude 是 bypassPermissions，改檔風險留主 session）。
