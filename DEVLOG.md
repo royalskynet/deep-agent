@@ -1,5 +1,14 @@
 # 2026-09-15
 
+`deep-run` falls back to `gh auth token` when `~/.creds/kv` has no GitHub token, so a
+machine that never set up the kv mirror still lets deep `gh search` for a wheel;
+`test-deep-run.sh` checks it (11/11). Docs drop the retired Agent haiku-shell notes and
+stop calling royalskynet/deep-agent deleted — it is the public mirror.
+
+`deep-run` 在 `~/.creds/kv` 沒有 GitHub token 時退回 `gh auth token`，沒建 kv 鏡像的機器也能讓
+deep `gh search` 找輪子；`test-deep-run.sh` 已加檢查（11/11）。文件移除已退役的 Agent haiku 殼
+說明，並不再稱 royalskynet/deep-agent 已刪除——它是公開鏡像。
+
 `deep-run` now configures the proxy instead of inheriting whatever the interactive
 launcher defaults to. It pins `deepseek-v4-flash-0731` (deep has no `Agent` tool, so
 it never produces subagent traffic and a Pro-class main model costs ~10x for no

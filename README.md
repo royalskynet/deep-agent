@@ -1,7 +1,7 @@
 # deep-agent
 
-> Since 2026-09-12 this lives inside [royalskynet/deepclaude](https://github.com/royalskynet/deepclaude)
-> as top-level `deep-agent/` (the old standalone repo was merged via git subtree and deleted).
+> Source of truth: top-level `deep-agent/` in [royalskynet/deepclaude](https://github.com/royalskynet/deepclaude).
+> royalskynet/deep-agent is a public mirror published by `repo/tools/sync-deep-agent-mirror.sh`.
 
 The `deep` agent — the default subagent that runs a task
 end-to-end, headless, outside the sandbox, via deepclaude.
@@ -9,13 +9,13 @@ end-to-end, headless, outside the sandbox, via deepclaude.
 `deep` means: hand the raw task text to the deepclaude-backed Claude Code loop and
 let it run to completion with no supervision.
 
-Entry points (the Agent/`subagent_type: deep` haiku shell was retired 2026-09-12):
+Entry points:
 
 - **`/deep`**: slash command that forwards the task via Bash direct `deep-run`.
 - **Bash direct**: `deep-run <task.md> [cwd]`.
 
 Dependencies: [royalskynet/deepclaude](https://github.com/royalskynet/deepclaude),
-and `GH_TOKEN` in `~/.creds/kv` for `gh` access.
+and `gh` access (`GH_TOKEN` from `~/.creds/kv`, else `gh auth token`).
 
 ---
 
@@ -266,5 +266,5 @@ slug、內部 fix log 編號、launchd uid target、憑證樣式、email——�
 Symlinks the repo into place (deepclaude's agent / skill / command, plus
 `~/.local/bin/deep-run`). Requires deepclaude
 ([royalskynet/deepclaude](https://github.com/royalskynet/deepclaude)) and
-`GH_TOKEN` in `~/.creds/kv`. Rerunnable; must be sourced from the current repo
+`gh` access (`GH_TOKEN` in `~/.creds/kv`, else a `gh auth login`). Rerunnable; must be sourced from the current repo
 checkout.

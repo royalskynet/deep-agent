@@ -43,6 +43,9 @@ case "$f" in /*) ;; *) echo "deep-run: task path must be absolute: $f" >&2; exit
 
 GHK="$CREDS_DIR/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt"
 [ -r "$GHK" ] && GH_TOKEN=$(cat "$GHK") && export GH_TOKEN
+# No kv mirror (fresh machine): fall back to the logged-in gh keyring. deep-run runs
+# outside the sandbox, so the keyring is reachable here even though it is not headless-safe.
+[ -z "${GH_TOKEN:-}" ] && GH_TOKEN=$(gh auth token 2>/dev/null) && export GH_TOKEN
 
 mkdir -p "$(dirname "$WLOG")"
 echo "$(date '+%F %T') deep-run start $f cwd=$d" >> "$WLOG"

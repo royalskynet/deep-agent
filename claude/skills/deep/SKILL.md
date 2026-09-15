@@ -14,9 +14,9 @@ description: 派工給 deep 執行人（deepclaude/CheaperInference，沙箱外�
 - **每份任務檔末尾固定附「## 禁止」段**，至少含：「`launchctl bootout/bootstrap/kickstart` 必帶完整 service target `gui/$(id -u)/<label>`；裸 domain 與 `launchctl reboot` 禁止；載入回 141/125 立即停手回報」（曾有一次裸跑 `bootout gui/<uid>` 拆掉整個登入 session，無頭機無法自救）。任務若涉及 launchd 載入，指令寫全、不留「照 fixindex 慣例」之類的省略。
 
 ## 派工（唯 Bash 裸呼）
-- **Bash 直呼**：主 session 用 `run_in_background` 自己控進度、或指定 cwd／串多個任務。`shell 派 agents/deep.md haiku 殼已于 2026-09-12 退役`。
+- **Bash 直呼**：主 session 用 `run_in_background` 自己控進度、或指定 cwd／串多個任務。
 - `deep-run <task.md> <cwd>`，**裸名**（絕對路徑不匹配 excludedCommands 會掉回沙箱，deep-run 會 exit 3 提示），單一原子指令（禁 pipe／&&／$()／heredoc 同 call；timeout 600000）。預估 >2 分鐘 → `run_in_background: true`。
-- deep 工具：Bash／Read／Edit／Write／Glob／Grep；`gh` 走 deep-run 注入的 `GH_TOKEN`（kv 鏡像），不靠 keyring。任務不得要求 Agent／WebFetch／WebSearch／MCP。
+- deep 工具：Bash／Read／Edit／Write／Glob／Grep；`gh` 走 deep-run 注入的 `GH_TOKEN`（kv 鏡像；缺檔時退回 `gh auth token`）。任務不得要求 Agent／WebFetch／WebSearch／MCP。
 - 每轉前綴約 5.5k tokens；長任務照派，成本在 DeepSeek 端。
 
 ## 驗收

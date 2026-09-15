@@ -16,12 +16,15 @@ echo 'task' > "$tmp/task.md"
 cat > "$tmp/home/.local/bin/deepclaude" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$STUB_ARGV"
-env | grep -E '^(CHEAPERINFERENCE_MODEL|DC_MAIN_HARNESS_FILE|DC_LOOP_GUARD)=' | sort > "$STUB_ENV"
+env | grep -E '^(CHEAPERINFERENCE_MODEL|DC_MAIN_HARNESS_FILE|DC_LOOP_GUARD|GH_TOKEN)=' | sort > "$STUB_ENV"
 STUB
 chmod +x "$tmp/home/.local/bin/deepclaude"
+# No kv token in the fake creds dir, so deep-run must take GH_TOKEN from `gh auth token`.
+printf '#!/usr/bin/env bash\necho stub-gh-token\n' > "$tmp/home/.local/bin/gh"
+chmod +x "$tmp/home/.local/bin/gh"
 
 HOME="$tmp/home" CREDS_DIR="$tmp/home/.creds" \
-  STUB_ARGV="$tmp/argv" STUB_ENV="$tmp/env" WLOG="$tmp/w.log" HTTPS_PROXY="" \
+  STUB_ARGV="$tmp/argv" STUB_ENV="$tmp/env" WLOG="$tmp/w.log" HTTPS_PROXY="" GH_TOKEN="" \
   "$HERE/deep-run" "$tmp/task.md" "$tmp/work" >/dev/null 2>&1
 
 argv=$(cat "$tmp/argv" 2>/dev/null) || { echo "FAIL: stub never ran"; exit 1; }
@@ -44,6 +47,9 @@ check "--max-turns set"                            'grep -qx -- "--max-turns" <<
 check "pins the cheap model"                       'grep -q "^CHEAPERINFERENCE_MODEL=deepseek-v4-flash" <<< "$envs"'
 check "points the proxy at the main harness"       'grep -q "^DC_MAIN_HARNESS_FILE=.*subagent-harness.md$" <<< "$envs"'
 check "loop guard on by default"                   'grep -qx "DC_LOOP_GUARD=on" <<< "$envs"'
+# Without a token deep cannot `gh search` for an existing wheel, so a machine with no
+# kv mirror must still get one from the gh login.
+check "GH_TOKEN falls back to gh auth token"      'grep -qx "GH_TOKEN=stub-gh-token" <<< "$envs"'
 
 # An absolute path bypasses the sandbox allowlist entry ("deep-run *"), so deep-run
 # must refuse rather than silently run inside the sandbox with DNS dead.
@@ -51,5 +57,5 @@ out=$(HOME="$tmp/home" WLOG="$tmp/w.log" HTTPS_PROXY="http://localhost:8080" \
       "$HERE/deep-run" "$tmp/task.md" "$tmp/work" 2>&1); rc=$?
 check "refuses to run inside the sandbox"          '[ "$rc" = 3 ] && grep -q "INSIDE sandbox" <<< "$out"'
 
-[ "$fail" = 0 ] && echo "OK: 10/10 deep-run invocation checks passed"
+[ "$fail" = 0 ] && echo "OK: 11/11 deep-run invocation checks passed"
 exit "$fail"
