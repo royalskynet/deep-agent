@@ -47,8 +47,14 @@ GHK="$CREDS_DIR/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt"
 mkdir -p "$(dirname "$WLOG")"
 echo "$(date '+%F %T') deep-run start $f cwd=$d" >> "$WLOG"
 cd "$d" || exit 2
+# --system-prompt-file replaces Claude Code's default prompt, and the environment
+# block that normally names the working directory goes with it. deep then has no way
+# to know where it was started: one measured run spent five rounds on `find $HOME
+# -type d -name src` before giving up empty-handed, which is both wasted turns and the
+# kind of broad filesystem scan the operating rules forbid. State the cwd instead.
 deepclaude -p "$(cat "$f")" --output-format text \
   --system-prompt-file "$DC_HOME/config/deep-system.md" \
+  --append-system-prompt "Working directory: $d — you are already in it. Every relative path in the task resolves under it. Do not search the filesystem for the task's files; if something is missing, \`ls\` here and report what is actually present." \
   --tools Bash,Read,Edit,Write,Glob,Grep \
   --disable-slash-commands \
   --strict-mcp-config \

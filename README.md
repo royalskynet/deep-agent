@@ -176,7 +176,12 @@ turn count and prose, not retries. A static prompt rule did not move it (the con
 already asked for batching), which is why the guard injects at the moment of the
 behaviour instead.
 
-Self-check: `node <deepclaude>/repo/proxy/test-loop-guard.mjs` (stdlib only, no network).
+Self-checks (stdlib only, no network):
+
+- `node <deepclaude>/repo/proxy/test-loop-guard.mjs` — the guard's counting and nudges.
+- `bin/test-deep-run.sh` — how `deep-run` composes the Claude Code invocation: the cwd
+  is stated, no `--bare`, no `Agent` tool, the cheap model and harness are pinned, and
+  an absolute-path call refuses to run inside the sandbox.
 
 ## Publishing
 
@@ -225,7 +230,11 @@ loop guard 無狀態——直接讀請求內容，所以 proxy 重啟或對話�
 門檻才落在行為真正變不正常的位置。剩下的浪費在輪數與廢話，不在重試。靜態 prompt
 規則沒有用（設定檔早就要求批次了），所以 guard 改成在行為發生的當下注入。
 
-自檢：`node <deepclaude>/repo/proxy/test-loop-guard.mjs`（純 stdlib，不連網）。
+自檢（純 stdlib，不連網）：
+
+- `node <deepclaude>/repo/proxy/test-loop-guard.mjs`——guard 的計數與 nudge。
+- `bin/test-deep-run.sh`——`deep-run` 怎麼組出 Claude Code 的呼叫：有沒有講清楚工作目錄、
+  沒有 `--bare`、沒有 `Agent` 工具、便宜模型與 harness 有釘住、用絕對路徑呼叫會拒跑。
 
 ### 發佈（繁體中文）
 
