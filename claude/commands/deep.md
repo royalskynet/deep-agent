@@ -9,7 +9,7 @@ deep 是自主執行者，不設能力上限：搜尋／枚舉／改檔／git／
    - **主 session 剛出過計畫 md**（或 `$ARGUMENTS` 是 md 絕對路徑）→ 任務檔＝那份計畫，**不重寫、不摘要**。計畫沒驗收段就 append 一行「驗收：<一條指令＋期望>」。
    - 沒計畫 → scratchpad `deep/<slug>.md` 三段：**任務**（原文＋絕對路徑、限制）、**驗收**（一條可重跑指令＋期望；想不出寫「自訂驗收並貼輸出」）、**不動**（可省）。不寫步驟、不寫指令。含憑證路徑字串用 Write tool。
 2. Bash 單一原子指令 `deep-run <任務檔絕對路徑> <cwd>`（**裸名** deep-run，絕對路徑會掉回沙箱 exit 3；禁 pipe／&&／$()；timeout 600000；預估 >2 分鐘加 `run_in_background: true`）。
-3. 驗收：重跑驗收指令；`tail -2 ~/Library/Logs/openclaw/wrappers.log` 有 `deep-run start`／`end rc=`。回報缺段就讀 deepclaude transcript 的 tool_result。
+3. 驗收：重跑驗收指令；`tail -2 "$WLOG"`（預設 `~/Library/Logs/openclaw/wrappers.log`） 有 `deep-run start`／`end rc=`。回報缺段就讀 deepclaude transcript 的 tool_result。
 4. 回使用者 ≤200 字：結果＋deep 用的輪子 URL＋驗收輸出原文。
 
 ## 判準

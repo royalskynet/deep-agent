@@ -1,6 +1,9 @@
 # deep-agent
 
-Standalone repo for the `deep` agent — the default subagent that runs a task
+> Since 2026-09-12 this lives inside [royalskynet/deepclaude](https://github.com/royalskynet/deepclaude)
+> as top-level `deep-agent/` (the old standalone repo was merged via git subtree and deleted).
+
+The `deep` agent — the default subagent that runs a task
 end-to-end, headless, outside the sandbox, via deepclaude.
 
 `deep` means: hand the raw task text to the deepclaude-backed Claude Code loop and
@@ -130,11 +133,65 @@ deep-run <task.md> [cwd]
   6.5 分鐘、29 turns）。
 - 需要互動或 vision 的任務活不過無頭執行。
 
+## Efficiency harness
+
+`deep` is a main loop with no `Agent` tool, so it never spawns subagents — anything
+aimed at subagent traffic never reaches it. `deep-run` therefore configures the
+deepclaude proxy directly:
+
+| Env var | Set by `deep-run` | What it does |
+|---|---|---|
+| `CHEAPERINFERENCE_MODEL` | `deepseek-v4-flash-0731` | Pins the cheap model. The interactive launcher may default to a Pro-class model; deep does not need it and it costs ~10x on this workload. |
+| `DC_MAIN_HARNESS_FILE` | `$DC_HOME/repo/proxy/subagent-harness.md` | Prepends the ponytail lazy-senior-dev ruleset ([MIT](https://github.com/DietrichGebert/ponytail)) to the main loop's system prompt. |
+| `DC_LOOP_GUARD` | `on` | Watches the conversation and appends a short system message when the loop degenerates. |
+
+The loop guard is stateless — it reads the request body, so a restarted proxy or a
+resumed conversation still measures correctly. Three nudges, tunable by env:
+
+- `DC_GUARD_SINGLES` (3) — consecutive turns that fired exactly one tool. Each turn
+  resends the whole context, so a run of one-tool turns is the dominant waste.
+- `DC_GUARD_NARRATION` (3000) — characters of prose written so far.
+- `DC_GUARD_ROUNDS` (15) — turn count; every multiple demands converge-or-stop.
+
+Why these three: measured over 32 real `deep-run` sessions, 87% of tool rounds fired
+exactly one tool (1.16 tools per round), the model wrote 214k characters of prose,
+and one session reached 121 turns — while *repeated* commands were 0.2%. The waste is
+turn count and prose, not retries. A static prompt rule did not move it (the config
+already asked for batching), which is why the guard injects at the moment of the
+behaviour instead.
+
+Self-check: `node <deepclaude>/repo/proxy/test-loop-guard.mjs` (stdlib only, no network).
+
+### 效率 harness（繁體中文）
+
+`deep` 是沒有 `Agent` 工具的主 loop，永遠不會產生 subagent —— 所以任何針對 subagent
+流量的東西都碰不到它。`deep-run` 因此直接設定 deepclaude proxy：
+
+| 環境變數 | `deep-run` 設的值 | 作用 |
+|---|---|---|
+| `CHEAPERINFERENCE_MODEL` | `deepseek-v4-flash-0731` | 釘住便宜模型。互動式 launcher 可能預設 Pro 級模型，deep 不需要，且在這種用量下貴約 10 倍。 |
+| `DC_MAIN_HARNESS_FILE` | `$DC_HOME/repo/proxy/subagent-harness.md` | 把 ponytail 懶惰資深開發者 ruleset（[MIT](https://github.com/DietrichGebert/ponytail)）前置到主 loop 的 system prompt。 |
+| `DC_LOOP_GUARD` | `on` | 監看對話，迴圈退化時附加一句 system 訊息。 |
+
+loop guard 無狀態——直接讀請求內容，所以 proxy 重啟或對話續跑都算得準。三條 nudge，
+都可用環境變數調：
+
+- `DC_GUARD_SINGLES`（3）——連續幾輪每輪只發一個工具。每輪都要重送整包 context，
+  連續單發輪是最大的浪費來源。
+- `DC_GUARD_NARRATION`（3000）——已寫的敘述字數。
+- `DC_GUARD_ROUNDS`（15）——輪數；每到倍數就要求收斂或停手。
+
+為什麼是這三條：實測 32 個真實 `deep-run` session，87% 的工具輪只發一個工具（平均
+1.16 個／輪）、敘述共 21.4 萬字、最長一次 121 輪——而**重複**指令只有 0.2%。浪費在
+輪數與廢話，不在重試。靜態 prompt 規則沒有用（設定檔早就要求批次了），所以 guard
+改成在行為發生的當下注入。
+
+自檢：`node <deepclaude>/repo/proxy/test-loop-guard.mjs`（純 stdlib，不連網）。
+
 ## Install
 
 ```
-cd deep-agent
-./install.sh
+~/.deepclaude/deep-agent/install.sh
 ```
 
 Symlinks the repo into place (deepclaude's agent / skill / command, plus

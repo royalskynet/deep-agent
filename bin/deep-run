@@ -1,23 +1,54 @@
 #!/bin/bash
-# deep-run <task.md> [cwd] — 沙箱外執行 deepclaude 的唯一入口（settings.json sandbox.excludedCommands）
-# 只 log 路徑與 rc，永不 log 內容或憑證值。
-# 瘦身旗標（2026-09-12 實測）：預設前綴 22,132 → ~5.5k tokens/turn，creds-egress-guard hook 仍生效。
-# 不用 --bare：--bare 依文件 skip hooks，實測 --bare --settings 也不跑 PreToolUse（guard 失效）。
-# GH_TOKEN：gh keyring 在無頭環境會失效，改由 kv 鏡像注入，deep 才能 gh search 找輪子。
+# deep-run <task.md> [cwd] — the only entry point that runs deepclaude outside the
+# sandbox (settings.json sandbox.excludedCommands). Logs paths and rc only, never
+# content, never credential values.
+#
+# Slimming flags (measured 2026-09-12): default prefix 22,132 → ~5.5k tokens/turn,
+# and the creds-egress-guard PreToolUse hook still fires. No `--bare`: the docs say
+# it skips hooks, and it does — measured, even with --settings — which disarms the
+# guard.
+#
+# GH_TOKEN: the gh keyring is unusable headless, so the value is injected from the
+# kv mirror instead; that is what lets deep `gh search` for an existing wheel.
 set -u
-# 沙箱防呆：白名單是字面 "deep-run *"，用絕對路徑呼叫會掉回沙箱（node DNS 秒死、偽裝成 502）。
-case "${HTTPS_PROXY:-}" in *localhost:*|*127.0.0.1:*) echo "deep-run: running INSIDE sandbox — call bare 'deep-run', not full path" >&2; exit 3 ;; esac
-f=${1:-}; d=${2:-$HOME/.deepclaude/work}
-WLOG=$HOME/Library/Logs/openclaw/wrappers.log
+
+DC_HOME="${DC_HOME:-$HOME/.deepclaude}"
+CREDS_DIR="${CREDS_DIR:-$HOME/.creds}"
+# launchd and sandbox-excluded shells hand over a minimal PATH; deepclaude and node
+# live in one of these on both machines.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+command -v deepclaude >/dev/null || { echo "deep-run: deepclaude not on PATH" >&2; exit 2; }
+
+# deep is a headless main loop with no Agent tool, so it never produces subagent
+# traffic. Pin the cheap model directly and hand the main loop the same harness the
+# subagent path gets, plus the loop guard (see repo/proxy/model-proxy.js).
+export CHEAPERINFERENCE_MODEL="${CHEAPERINFERENCE_MODEL:-deepseek-v4-flash-0731}"
+export DC_MAIN_HARNESS_FILE="${DC_MAIN_HARNESS_FILE:-$DC_HOME/repo/proxy/subagent-harness.md}"
+export DC_LOOP_GUARD="${DC_LOOP_GUARD:-on}"
+
+# Sandbox guard: the allowlist entry is the literal string "deep-run *", so calling
+# this by absolute path silently drops back into the sandbox (node DNS dies at once
+# and fakes a 502).
+case "${HTTPS_PROXY:-}" in
+    *localhost:*|*127.0.0.1:*)
+        echo "deep-run: running INSIDE sandbox — call bare 'deep-run', not the full path" >&2
+        exit 3 ;;
+esac
+
+f=${1:-}; d=${2:-$DC_HOME/work}
+WLOG="${WLOG:-$HOME/Library/Logs/openclaw/wrappers.log}"
 case "$f" in /*) ;; *) echo "deep-run: task path must be absolute: $f" >&2; exit 2 ;; esac
 [ -f "$f" ] || { echo "deep-run: task file not found: $f" >&2; exit 2; }
 [ -d "$d" ] || { echo "deep-run: cwd not found: $d" >&2; exit 2; }
-GHK=$HOME/.creds/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt
+
+GHK="$CREDS_DIR/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt"
 [ -r "$GHK" ] && GH_TOKEN=$(cat "$GHK") && export GH_TOKEN
+
+mkdir -p "$(dirname "$WLOG")"
 echo "$(date '+%F %T') deep-run start $f cwd=$d" >> "$WLOG"
-cd "$d"
-$HOME/.local/bin/deepclaude -p "$(cat "$f")" --output-format text \
-  --system-prompt-file $HOME/.deepclaude/config/deep-system.md \
+cd "$d" || exit 2
+deepclaude -p "$(cat "$f")" --output-format text \
+  --system-prompt-file "$DC_HOME/config/deep-system.md" \
   --tools Bash,Read,Edit,Write,Glob,Grep \
   --disable-slash-commands \
   --strict-mcp-config \
@@ -25,9 +56,14 @@ $HOME/.local/bin/deepclaude -p "$(cat "$f")" --output-format text \
   --max-turns 150
 rc=$?
 echo "$(date '+%F %T') deep-run end rc=$rc $f" >> "$WLOG"
-# #11 摘要防幻觉：收尾附 transcript 客观统计，让最终摘要不是唯一输出。
-TRANS="$(ls -t "$HOME/.deepclaude/config/projects/<cwd-slug>/"*.jsonl 2>/dev/null | head -1)"
-if [[ -n "$TRANS" && -f "$TRANS" ]]; then
+
+# Summary anti-hallucination: append objective transcript stats so the model's final
+# prose is not the only output — a headless run's summary is the one part of it that
+# cannot be verified from the outside. Claude Code names the transcript
+# directory after the cwd with / and . both replaced by -.
+SLUG=$(printf '%s' "$d" | sed 's/[\/.]/-/g')
+TRANS="$(ls -t "$DC_HOME/config/projects/$SLUG/"*.jsonl 2>/dev/null | head -1)"
+if [ -n "$TRANS" ] && [ -f "$TRANS" ]; then
   echo "deep-run transcript: tool_use=$(jq -r 'select(.type=="assistant" and .message) | .message.content[]? | select(.type=="tool_use") | .id' "$TRANS" 2>/dev/null | wc -l | tr -d ' ')"
   echo "last_tool_result: $(jq -r 'select(.type=="user" and .message) | .message.content[]? | select(.type=="tool_result") | .content' "$TRANS" 2>/dev/null | tail -1 | cut -c1-300)"
 else
