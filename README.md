@@ -155,7 +155,10 @@ resumed conversation still measures correctly. Three nudges, tunable by env:
 - `DC_GUARD_NARRATION` (3000) — characters of prose written so far. Fires once per
   **doubling** of that budget (3k, 6k, 12k, …), so a very chatty run gets ~6 nudges
   rather than one on every remaining turn.
-- `DC_GUARD_ROUNDS` (15) — turn count; every multiple demands converge-or-stop.
+- `DC_GUARD_ROUNDS` (15) — turn count; every multiple demands converge-or-stop, and
+  from the third one on it stops offering the choice. Repeating an identical demand is
+  what an ignored nudge looks like: 8/78 corpus sessions cross the threshold four or
+  more times and one crosses it seventeen times.
 
 Why these numbers: measured over 77 real `deep-run` sessions / 1,780 tool rounds.
 
@@ -175,6 +178,14 @@ threshold where the behaviour actually becomes abnormal. The waste that remains 
 turn count and prose, not retries. A static prompt rule did not move it (the config
 already asked for batching), which is why the guard injects at the moment of the
 behaviour instead.
+
+Measured effect of the 2026-09-15 metric correction, replaying both versions of the
+guard over 118 tool rounds from 16 fresh `deep-run` audits: 29 nudges before, 7 after
+(25% of rounds carried one, now 6%), with the batching nudge dropping from 18 firings
+to 1. Output quality was unchanged — both A/B arms produced their report in 8/8 runs
+at 98-99% recall. The guard's *positive* effect is still unmeasured: at these
+thresholds it fired 3 times across those 16 runs, so a normal-workload A/B cannot see
+it. See DEVLOG for the full table.
 
 Self-checks (stdlib only, no network):
 
@@ -212,7 +223,9 @@ loop guard 無狀態——直接讀請求內容，所以 proxy 重啟或對話�
   主要浪費來源。
 - `DC_GUARD_NARRATION`（3000）——已寫的敘述字數。每**翻倍**觸發一次（3k、6k、12k…），
   所以話很多的 run 大約收到 6 次，而不是超過門檻後每輪都收到。
-- `DC_GUARD_ROUNDS`（15）——輪數；每到倍數就要求收斂或停手。
+- `DC_GUARD_ROUNDS`（15）——輪數；每到倍數就要求收斂或停手，第三次開始不再給選項。
+  重複同一句話正是 nudge 被無視的樣子：語料裡 8/78 個 session 會跨過門檻四次以上，
+  其中一個跨了十七次。
 
 為什麼是這些數字：實測 77 個真實 `deep-run` session、1,780 個工具輪。
 

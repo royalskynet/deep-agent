@@ -43,10 +43,67 @@ deep writes 419–688 characters of prose per run**, so the default `DC_GUARD_NA
 of 3000 effectively never fires; G2 is a backstop for a disabled or ignored harness,
 not a routine control.
 
-The behavioural *effect* is still not established — the A/B was n=2 per arm and
-noise-dominated. Arm B also showed deep correctly ignoring G1/G3 on genuinely serial
-work, which is the right response but means compliance is untested on work that
-really is batchable.
+**A/B at n=8 per arm.** 16 `deep-run` audits of a 12-file fixture with 29 planted
+defects, guard on/off, four concurrent, arms interleaved per batch so upstream drift
+hits both equally:
+
+| | guard on | guard off |
+|---|---|---|
+| rounds | 6.6 | 6.6 |
+| narration | 2,403 | 2,575 |
+| prompt tokens | 156,897 | 162,075 |
+| produced the output file | 8/8 | 8/8 |
+| defects found | 98% | 99% |
+
+No effect, and the honest reason is in the replay: **across those 16 runs the guard
+fired 3 times** (1 batching, 2 narration, 0 rounds). A treatment applied three times
+cannot show an effect, so this A/B says nothing about whether the nudges work. Testing
+that needs the degenerate tail — 8 of 78 corpus sessions — which at this base rate
+means roughly 80 runs, not 16.
+
+What the same 16 runs *do* measure is the metric fix, by replaying both versions of
+the guard over their 118 tool rounds:
+
+| | nudges | share of rounds | G1 | G2 |
+|---|---|---|---|---|
+| before (tool_use blocks, bare `>=`) | 29 | 25% | 18 | 11 |
+| after (shell commands, doubling band) | 7 | 6% | 1 | 6 |
+
+22 of 29 nudges were firing on healthy behaviour — mostly G1 scolding rounds that had
+already batched their commands into one Bash call. Removing them cost nothing: both
+arms produced output in 8/8 runs at 98-99% recall.
+
+Arm B earlier showed deep correctly ignoring G1/G3 on genuinely serial work. That is
+the right response, but it means compliance on work that really is batchable is still
+untested.
+
+**n=8 的 A/B。** 16 趟 `deep-run` 稽核同一份 12 檔、29 個植入缺陷的 fixture，guard 開／關，
+四趟並行，每批兩開兩關交錯，讓上游波動平均落在兩臂：
+
+| | guard 開 | guard 關 |
+|---|---|---|
+| 輪數 | 6.6 | 6.6 |
+| 旁白字數 | 2,403 | 2,575 |
+| prompt token | 156,897 | 162,075 |
+| 有產出檔案 | 8/8 | 8/8 |
+| 找到的缺陷 | 98% | 99% |
+
+沒有差異，而誠實的原因在回放裡：**這 16 趟裡 guard 總共只觸發 3 次**（批次 1、旁白 2、
+輪數 0）。施了三次的藥測不出療效，所以這個 A/B 對「nudge 有沒有用」沒有結論。要測那個
+得取到退化長尾——78 個 session 裡的 8 個——照這個基礎比率大約要 80 趟，不是 16 趟。
+
+同樣這 16 趟真正能測的是指標修正本身。把新舊兩版 guard 都回放過它們的 118 個工具輪：
+
+| | nudge 次數 | 佔輪次 | G1 | G2 |
+|---|---|---|---|---|
+| 修正前（算 tool_use block、裸 `>=`） | 29 | 25% | 18 | 11 |
+| 修正後（算 shell 指令、翻倍節流） | 7 | 6% | 1 | 6 |
+
+29 次裡有 22 次是對正常行為開罵——多數是 G1 在罵那些早就把指令批次進同一個 Bash call
+的輪次。拿掉它們沒有代價：兩臂都是 8/8 有產出、recall 98–99%。
+
+前面的 arm B 顯示 deep 在真正序列相依的工作上正確地無視了 G1／G3。反應是對的，但也代表
+「在真的能批次的工作上會不會聽話」仍未測到。
 
 用 `proxy/test-loop-guard.mjs` 驗（13/13，原本 7/7）、把出貨版的 `shellUnits()` 抽出來
 重跑同一份 77 session 語料驗（35.8% / 4.27 / p90 4，文件數字與執行中的程式碼一致），
