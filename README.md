@@ -148,14 +148,30 @@ deepclaude proxy directly:
 The loop guard is stateless — it reads the request body, so a restarted proxy or a
 resumed conversation still measures correctly. Three nudges, tunable by env:
 
-- `DC_GUARD_SINGLES` (3) — consecutive turns that fired exactly one tool. Each turn
-  resends the whole context, so a run of one-tool turns is the dominant waste.
-- `DC_GUARD_NARRATION` (3000) — characters of prose written so far.
+- `DC_GUARD_SINGLES` (4) — consecutive turns worth **one shell command**. Not one
+  `tool_use` block: a Bash call that chains commands with `;`, `&&`, `||` or newlines
+  is already batched, and quoted or heredoc separators do not count. Each turn
+  resends the whole context, so a run of genuinely-one-thing turns is the main waste.
+- `DC_GUARD_NARRATION` (3000) — characters of prose written so far. Fires once per
+  **doubling** of that budget (3k, 6k, 12k, …), so a very chatty run gets ~6 nudges
+  rather than one on every remaining turn.
 - `DC_GUARD_ROUNDS` (15) — turn count; every multiple demands converge-or-stop.
 
-Why these three: measured over 32 real `deep-run` sessions, 87% of tool rounds fired
-exactly one tool (1.16 tools per round), the model wrote 214k characters of prose,
-and one session reached 121 turns — while *repeated* commands were 0.2%. The waste is
+Why these numbers: measured over 77 real `deep-run` sessions / 1,780 tool rounds.
+
+| Metric | Value |
+|---|---|
+| Rounds with exactly one `tool_use` block | 88.8% |
+| Rounds with exactly one *shell command* | **35.8%** (4.27 commands per round) |
+| Trailing run of genuine one-command rounds | p50 1, p90 4, max 32 |
+| Mid-run narration, excluding the final report | p50 252 chars, p90 31k, max 138k |
+| Rounds per session | p50 3, p90 67, max 252; 25/77 reach 15 |
+| *Repeated* commands | 0.2% |
+
+The block count overstates the problem 2.5x — deep batches far more than it first
+appeared, and the earlier threshold of 3 one-block turns would have nudged 62% of
+runs, most of them already batched. Counting shell commands instead puts the
+threshold where the behaviour actually becomes abnormal. The waste that remains is
 turn count and prose, not retries. A static prompt rule did not move it (the config
 already asked for batching), which is why the guard injects at the moment of the
 behaviour instead.
@@ -176,15 +192,29 @@ Self-check: `node <deepclaude>/repo/proxy/test-loop-guard.mjs` (stdlib only, no 
 loop guard 無狀態——直接讀請求內容，所以 proxy 重啟或對話續跑都算得準。三條 nudge，
 都可用環境變數調：
 
-- `DC_GUARD_SINGLES`（3）——連續幾輪每輪只發一個工具。每輪都要重送整包 context，
-  連續單發輪是最大的浪費來源。
-- `DC_GUARD_NARRATION`（3000）——已寫的敘述字數。
+- `DC_GUARD_SINGLES`（4）——連續幾輪「只做一件事」。算的是 **shell 指令數**不是
+  `tool_use` 數：同一個 Bash call 用 `;`、`&&`、`||` 或換行串起來就算批次過了，
+  引號內與 heredoc 內的分隔符不計。每輪都要重送整包 context，真正的單發連續輪是
+  主要浪費來源。
+- `DC_GUARD_NARRATION`（3000）——已寫的敘述字數。每**翻倍**觸發一次（3k、6k、12k…），
+  所以話很多的 run 大約收到 6 次，而不是超過門檻後每輪都收到。
 - `DC_GUARD_ROUNDS`（15）——輪數；每到倍數就要求收斂或停手。
 
-為什麼是這三條：實測 32 個真實 `deep-run` session，87% 的工具輪只發一個工具（平均
-1.16 個／輪）、敘述共 21.4 萬字、最長一次 121 輪——而**重複**指令只有 0.2%。浪費在
-輪數與廢話，不在重試。靜態 prompt 規則沒有用（設定檔早就要求批次了），所以 guard
-改成在行為發生的當下注入。
+為什麼是這些數字：實測 77 個真實 `deep-run` session、1,780 個工具輪。
+
+| 指標 | 數值 |
+|---|---|
+| 剛好一個 `tool_use` block 的輪次 | 88.8% |
+| 剛好一條 *shell 指令* 的輪次 | **35.8%**（平均 4.27 條／輪） |
+| 真正單指令輪的連續長度 | p50 1、p90 4、最長 32 |
+| 跑動中敘述字數（不含最後報告） | p50 252 字、p90 3.1 萬、最長 13.8 萬 |
+| 每 session 輪數 | p50 3、p90 67、最長 252；77 個裡 25 個達到 15 |
+| **重複**指令 | 0.2% |
+
+用 block 數算會高估問題 2.5 倍——deep 其實批次得比表面看起來多，而舊的「連續 3 個
+單 block 輪」門檻會對 62% 的連續段開罵，其中多數早就批次過了。改算 shell 指令數，
+門檻才落在行為真正變不正常的位置。剩下的浪費在輪數與廢話，不在重試。靜態 prompt
+規則沒有用（設定檔早就要求批次了），所以 guard 改成在行為發生的當下注入。
 
 自檢：`node <deepclaude>/repo/proxy/test-loop-guard.mjs`（純 stdlib，不連網）。
 
