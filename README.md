@@ -178,6 +178,15 @@ behaviour instead.
 
 Self-check: `node <deepclaude>/repo/proxy/test-loop-guard.mjs` (stdlib only, no network).
 
+## Publishing
+
+This directory is the only part of the private deepclaude repo that becomes public,
+so it is published by `repo/tools/sync-deep-agent-mirror.sh` rather than by
+`git subtree push`. The script exports what git *tracks* (never the working tree),
+runs a leak gate over the export — absolute home paths, transcript slugs, internal
+fix-log ids, launchd uid targets, credential shapes, e-mail addresses — and pushes
+only if the gate passes. `--dry-run` shows the diff without committing.
+
 ### 效率 harness（繁體中文）
 
 `deep` 是沒有 `Agent` 工具的主 loop，永遠不會產生 subagent —— 所以任何針對 subagent
@@ -217,6 +226,14 @@ loop guard 無狀態——直接讀請求內容，所以 proxy 重啟或對話�
 規則沒有用（設定檔早就要求批次了），所以 guard 改成在行為發生的當下注入。
 
 自檢：`node <deepclaude>/repo/proxy/test-loop-guard.mjs`（純 stdlib，不連網）。
+
+### 發佈（繁體中文）
+
+這個目錄是私有 deepclaude repo 裡唯一會變公開的部分，所以用
+`repo/tools/sync-deep-agent-mirror.sh` 發佈，不用 `git subtree push`。腳本匯出的是 git
+**追蹤**的內容（絕不是工作目錄），對匯出結果跑一道洩漏閘門——絕對家目錄路徑、transcript
+slug、內部 fix log 編號、launchd uid target、憑證樣式、email——通過才推。`--dry-run`
+只顯示差異不提交。
 
 ## Install
 
