@@ -3,6 +3,12 @@
 # sandbox (settings.json sandbox.excludedCommands). Logs paths and rc only, never
 # content, never credential values.
 #
+# R6: detaches the actual model run (deep-run-inner) into a tmux session so it
+# survives the caller being kill -9'd. The foreground half of deep-run only waits on
+# the session, then replays work/.deep/<epoch>.out and exits with <epoch>.rc. The
+# tmux socket is private (tmux -L deep), so no shared-session surprises. Set
+# DEEP_NO_TMUX=1 to run the inner directly (tests / debugging) — no tmux needed.
+#
 # Slimming flags (measured 2026-09-12): default prefix 22,132 → ~5.5k tokens/turn,
 # and the creds-egress-guard PreToolUse hook still fires. No `--bare`: the docs say
 # it skips hooks, and it does — measured, even with --settings — which disarms the
@@ -23,7 +29,7 @@ command -v deepclaude >/dev/null || { echo "deep-run: deepclaude not on PATH" >&
 # traffic. Pin the cheap model directly and hand the main loop the same harness the
 # subagent path gets, plus the loop guard (see repo/proxy/model-proxy.js).
 export CHEAPERINFERENCE_MODEL="${CHEAPERINFERENCE_MODEL:-deepseek-v4-flash-0731}"
-export DC_MAIN_HARNESS_FILE="${DC_MAIN_HARNESS_FILE:-$DC_HOME/repo/proxy/subagent-harness.md}"
+export DC_MAIN_HARNESS_FILE="${DC_MAIN_HARNESS_FILE:-$DC_HOME/deep-agent/deep-harness.md}"
 export DC_LOOP_GUARD="${DC_LOOP_GUARD:-on}"
 
 # Sandbox guard: the allowlist entry is the literal string "deep-run *", so calling
@@ -41,41 +47,51 @@ case "$f" in /*) ;; *) echo "deep-run: task path must be absolute: $f" >&2; exit
 [ -f "$f" ] || { echo "deep-run: task file not found: $f" >&2; exit 2; }
 [ -d "$d" ] || { echo "deep-run: cwd not found: $d" >&2; exit 2; }
 
-GHK="$CREDS_DIR/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt"
-[ -r "$GHK" ] && GH_TOKEN=$(cat "$GHK") && export GH_TOKEN
-# No kv mirror (fresh machine): fall back to the logged-in gh keyring. deep-run runs
-# outside the sandbox, so the keyring is reachable here even though it is not headless-safe.
-[ -z "${GH_TOKEN:-}" ] && GH_TOKEN=$(gh auth token 2>/dev/null) && export GH_TOKEN
+# GH_TOKEN is resolved inside deep-run-inner (kv file, else `gh auth token`), never
+# here: anything put in the tmux command string below shows up verbatim in `ps`.
 
 mkdir -p "$(dirname "$WLOG")"
 echo "$(date '+%F %T') deep-run start $f cwd=$d" >> "$WLOG"
-cd "$d" || exit 2
-# --system-prompt-file replaces Claude Code's default prompt, and the environment
-# block that normally names the working directory goes with it. deep then has no way
-# to know where it was started: one measured run spent five rounds on `find $HOME
-# -type d -name src` before giving up empty-handed, which is both wasted turns and the
-# kind of broad filesystem scan the operating rules forbid. State the cwd instead.
-deepclaude -p "$(cat "$f")" --output-format text \
-  --system-prompt-file "$DC_HOME/config/deep-system.md" \
-  --append-system-prompt "Working directory: $d — you are already in it. Every relative path in the task resolves under it. Do not search the filesystem for the task's files; if something is missing, \`ls\` here and report what is actually present." \
-  --tools Bash,Read,Edit,Write,Glob,Grep \
-  --disable-slash-commands \
-  --strict-mcp-config \
-  --permission-mode bypassPermissions \
-  --max-turns 150
-rc=$?
-echo "$(date '+%F %T') deep-run end rc=$rc $f" >> "$WLOG"
 
-# Summary anti-hallucination: append objective transcript stats so the model's final
-# prose is not the only output — a headless run's summary is the one part of it that
-# cannot be verified from the outside. Claude Code names the transcript
-# directory after the cwd with / and . both replaced by -.
-SLUG=$(printf '%s' "$d" | sed 's/[\/.]/-/g')
-TRANS="$(ls -t "$DC_HOME/config/projects/$SLUG/"*.jsonl 2>/dev/null | head -1)"
-if [ -n "$TRANS" ] && [ -f "$TRANS" ]; then
-  echo "deep-run transcript: tool_use=$(jq -r 'select(.type=="assistant" and .message) | .message.content[]? | select(.type=="tool_use") | .id' "$TRANS" 2>/dev/null | wc -l | tr -d ' ')"
-  echo "last_tool_result: $(jq -r 'select(.type=="user" and .message) | .message.content[]? | select(.type=="tool_result") | .content' "$TRANS" 2>/dev/null | tail -1 | cut -c1-300)"
-else
-  echo "deep-run transcript: none"
+# R2: snapshot the task file before handing it to deepclaude — hash the copy target,
+# copy it read-only into $DC_HOME/work/.deep so deep/proxy cannot alter the contract
+# the caller (and later the mechanical judge) relies on. deepclaude reads the copy.
+EPOCH=$(date +%s)
+DEEP_TASK_DIR="$DC_HOME/work/.deep"
+mkdir -p "$DEEP_TASK_DIR"
+orig_hash=$(shasum -a 256 "$f" | cut -d' ' -f1)
+DEEP_TASK_FILE="$DEEP_TASK_DIR/$EPOCH-task.md"
+cp -f "$f" "$DEEP_TASK_FILE"
+chmod 444 "$DEEP_TASK_FILE"
+export DEEP_TASK_FILE
+
+# deep-run is usually reached through the ~/.local/bin/deep-run symlink; resolve it
+# so the inner's real path is used (a half-resolved INNER = ~/.local/bin/deep-run-inner
+# does not exist and the tmux dispatch dies on the spot).
+self=$0
+if [ -L "$self" ]; then
+  link_dir="$(cd "$(dirname "$self")" && pwd)"
+  tgt="$(readlink "$self")"
+  case "$tgt" in /*) real="$tgt" ;; *) real="$link_dir/$tgt" ;; esac
+  self="$real"
 fi
-exit $rc
+INNER="$(cd "$(dirname "$self")" && pwd)/deep-run-inner"
+command -v "$INNER" >/dev/null || { echo "deep-run: inner not found: $INNER" >&2; exit 2; }
+
+if [ "${DEEP_NO_TMUX:-0}" = 1 ]; then
+  # Tests / interactive debugging: run straight, inherit this shell's env.
+  "$INNER" "$DEEP_TASK_FILE" "$d" "$f" "$EPOCH"
+else
+  # tmux env does not inherit the caller's exports — hand them over explicitly.
+  envstr="env PATH='$PATH' CHEAPERINFERENCE_MODEL='$CHEAPERINFERENCE_MODEL'"
+  envstr="$envstr DC_MAIN_HARNESS_FILE='$DC_MAIN_HARNESS_FILE' DC_LOOP_GUARD='$DC_LOOP_GUARD'"
+  envstr="$envstr DEEP_TASK_FILE='$DEEP_TASK_FILE' DC_HOME='$DC_HOME' WLOG='$WLOG'"
+  envstr="$envstr CREDS_DIR='$CREDS_DIR'"
+  tmux -L deep new-session -d -s "deep-$EPOCH" \
+    "$envstr '$INNER' '$DEEP_TASK_FILE' '$d' '$f' '$EPOCH' ; tmux -L deep wait-for -S deep-$EPOCH"
+  # Foreground: wait for the inner to signal completion (wait-for is released by the
+  # inner's own `wait-for -S`, which follows the model run to its end).
+  tmux -L deep wait-for "deep-$EPOCH"
+fi
+cat "$DEEP_TASK_DIR/$EPOCH.out"
+exit "$(cat "$DEEP_TASK_DIR/$EPOCH.rc")"

@@ -1,0 +1,77 @@
+#!/bin/bash
+# deep-run-inner <copy> <cwd> <orig-task> <epoch> — the "doing" half of deep-run,
+# split out so deep-run can detach it into a tmux session that survives its own
+# process group being killed (R6, spike-proven: kill -9 on the parent leaves the
+# tmux child to finish). Runs the deepclaude main loop on <copy>, then the mechanical
+# judge on <orig-task>, tees stdout to work/.deep/<epoch>.out, and writes the final
+# rc to work/.deep/<epoch>.rc. deep-run reads both back.
+#
+# env that tmux does not carry over is handed to it explicitly by deep-run (see the
+# `env` prefix); DEEP_NO_TMUX=1 direct invocation inherits deep-run's own exports.
+set -u
+
+copy=$1; d=$2; f=$3; EPOCH=$4
+DC_HOME="${DC_HOME:-$HOME/.deepclaude}"
+WLOG="${WLOG:-$HOME/Library/Logs/openclaw/wrappers.log}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export DEEP_TASK_FILE="$copy"
+CREDS_DIR="${CREDS_DIR:-$HOME/.creds}"
+# GH_TOKEN lives here (not in deep-run) so it never rides the tmux command line.
+GHK="$CREDS_DIR/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt"
+[ -r "$GHK" ] && GH_TOKEN=$(cat "$GHK") && export GH_TOKEN
+# No kv mirror (fresh machine): fall back to the logged-in gh keyring.
+[ -z "${GH_TOKEN:-}" ] && GH_TOKEN=$(gh auth token 2>/dev/null) && export GH_TOKEN
+
+OUT="$DC_HOME/work/.deep/$EPOCH.out"
+RC="$DC_HOME/work/.deep/$EPOCH.rc"
+: > "$OUT"; : > "$RC"
+
+{
+  cd "$d" || { echo 2 > "$RC"; exit 2; }
+  # R2: hash BEFORE the model runs — copy and original are identical at this point.
+  orig_hash=$(shasum -a 256 "$copy" | cut -d' ' -f1)
+
+  # Same flags as the pre-split deep-run; the inner loop is the unchanged main body.
+  deepclaude -p "$(cat "$copy")" --output-format text \
+    --system-prompt-file "$DC_HOME/config/deep-system.md" \
+    --append-system-prompt "Working directory: $d — you are already in it. Every relative path in the task resolves under it. Do not search the filesystem for the task's files; if something is missing, \`ls\` here and report what is actually present." \
+    --tools Bash,Read,Edit,Write,Glob,Grep \
+    --disable-slash-commands \
+    --strict-mcp-config \
+    --permission-mode bypassPermissions \
+    --max-turns 150
+  rc=$?
+  # R2: the caller's task file must not drift from the copy deepclaude was given.
+  new_hash=$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1)
+  copy_hash=$(shasum -a 256 "$copy" 2>/dev/null | cut -d' ' -f1)
+  tampered=0
+  [ "$new_hash" = "$orig_hash" ] && [ "$copy_hash" = "$orig_hash" ] || tampered=1
+  # R1: mechanical judge on the ORIGINAL caller file.
+  verify=pass
+  wo_output=$(wo-verify "$f" 2>&1); wo_rc=$?
+  printf '%s\n' "$wo_output"
+  case "$wo_rc" in
+    0) verify=pass ;;
+    2) verify=none ;;
+    *) verify=fail ;;
+  esac
+  echo "$(date '+%F %T') deep-run end rc=$rc verify=$verify $f" >> "$WLOG"
+
+  # Summary anti-hallucination: append objective transcript stats so the model's final
+  # prose is not the only output — a headless run's summary is the one part of it that
+  # cannot be verified from the outside. Claude Code names the transcript
+  # directory after the cwd with / and . both replaced by -.
+  SLUG=$(printf '%s' "$d" | sed 's/[\/.]/-/g')
+  TRANS="$(ls -t "$DC_HOME/config/projects/$SLUG/"*.jsonl 2>/dev/null | head -1)"
+  if [ -n "$TRANS" ] && [ -f "$TRANS" ]; then
+    echo "deep-run transcript: tool_use=$(jq -r 'select(.type=="assistant" and .message) | .message.content[]? | select(.type=="tool_use") | .id' "$TRANS" 2>/dev/null | wc -l | tr -d ' ')"
+    echo "last_tool_result: $(jq -r 'select(.type=="user" and .message) | .message.content[]? | select(.type=="tool_result") | .content' "$TRANS" 2>/dev/null | tail -1 | cut -c1-300)"
+  else
+    echo "deep-run transcript: none"
+  fi
+  final_rc=$rc
+  [ "$tampered" = 1 ] && { echo "TASK_TAMPERED"; final_rc=1; }
+  [ "$verify" = fail ] && { echo "CLAIM_MISMATCH"; final_rc=1; }
+  printf '%s' "$final_rc" > "$RC"
+  exit "$final_rc"
+} 2>&1 | tee -a "$OUT"

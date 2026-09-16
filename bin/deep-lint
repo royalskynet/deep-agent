@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# deep-lint <task.md> — pre-dispatch contract check before handing a task to deep-run.
+#   A task file must carry exactly: one sentence task + one runnable 驗收 shell block
+#   (read-only asserts, failing nonzero) + a "預期：" line outside the block + an
+#   optional 不動 section, ≤40 lines, no "上次偏移紀錄". This is a mechanical gate:
+#   wo-verify --dry only checks the 驗收 block parses; it cannot judge prose, which is
+#   the 派工 side's job (see claude/commands/deep.md).
+# exit 0 = OK (or warn-only), 1 = no runnable 驗收 block.
+set -u
+wo="${1:?用法: deep-lint <task.md>}"
+[ -f "$wo" ] || { echo "deep-lint: 檔案不存在 $wo"; exit 1; }
+if ! wo-verify "$wo" --dry >/dev/null 2>&1; then
+  echo "LINT FAIL: no runnable 驗收 block"
+  exit 1
+fi
+n=$(wc -l < "$wo")
+if [ "$n" -gt 40 ]; then
+  echo "LINT WARN: $n lines (>40)"
+else
+  echo "LINT OK"
+fi

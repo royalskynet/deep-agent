@@ -1,3 +1,72 @@
+# 2026-09-16 (R3 Stop gate + R6 tmux detach)
+
+新增 `bench/`：`fixture.sh`／`run.sh`＋三張固定回歸任務（a 補權限、b 驗收矛盾、c SSOT 與
+驗收衝突），`run.sh <a|b|c> <n>` 跑 n 輪判 pass/fail、寫 `bench/results/<date>-<x>.log`，量
+deep 是否飄移。
+
+Bench 首輪（主 session 跑，任務檔「預期」行已改中性，不告訴 deep 是陷阱）：
+a 5/5、b 4/5、c 5/5。b 失敗的一輪 deep 判斷正確（NOT DONE＋驗收矛盾）但先拿樣本
+README.md 做了三次內容實驗再寫回，`git status --porcelain` 不空 → 判 fail；
+下一步是把「探測也不可寫被驗物」寫成 deep-system 動詞級規則。主 session 另補三修：
+GH_TOKEN 不再走 tmux 命令列（inner 自取）、R2 hash 改在模型跑前算並同時比對副本、
+gate 暫存檔 trap 清理；settings.json 的 Stop entry 去重成一筆。
+
+First bench (run from the main session, with neutral 預期 lines so the task file does not
+tell deep it is a trap): a 5/5, b 4/5, c 5/5. The one failing b round reached the right
+verdict (NOT DONE, contradictory acceptance) but first experimented on the sample README.md
+three times and wrote it back, leaving `git status --porcelain` non-empty. Follow-up: a
+verb-level deep-system rule that probing must not write the verified file either. Main-session
+fixes on top: GH_TOKEN no longer rides the tmux command line (inner resolves it), the R2 hash
+is taken before the model runs and the copy is compared too, the gate cleans its temp file
+via trap; settings.json now carries a single Stop gate entry.
+
+`deep-run` 拆成兩層：前置留在 `deep-run`，真正的 deepclaude 主迴圈（含 hash 比對、
+wo-verify、wrappers.log end 行、transcript 統計）搬進 `deep-run-inner`，用私有
+`tmux -L deep` socket detach（`DEEP_NO_TMUX=1` 直接跑，測試用）；前景 `deep-run`
+`wait-for` 後回放 `.deep/<epoch>.out` 並以 `.rc` 結束。實測：前景 `deep-run` 被
+`kill -9` 後 tmux 內工作照跑完，end 行 `rc=0 verify=pass`。`deep-run` 經
+`~/.local/bin` symlink 呼叫時 `$0` 會解錯 inner 路徑（指向不存在的
+`~/.local/bin/deep-run-inner`），已用 `readlink` 解 symlink 修正。新增 Stop gate
+`deep-stop-gate.sh`（install 註冊成 symlink）：DEEP_TASK_FILE 非空且該 session 未擋過
+時跑 `wo-verify`，rc≠0/2 印 `{"decision":"block"}`、touch marker、記 gate.log
+（bash 3.2 對「變數緊鄰全形括號」解析會吞變數名，`$vrc`→`${vrc}` 修正）。17/17
+（原 15 檢改 DEEP_NO_TMUX=1，新增 tmux `-L deep`/`new-session` argv 檢＋gate 擋一次
+檢）。註冊與啟用靠 `config/settings.json`（未 commit）的 `hooks.Stop` 新 entry。
+
+`deep-run` now splits into two layers: the launch half stays in `deep-run`; the real
+deepclaude main loop (hash compare, wo-verify, wrappers.log end line, transcript stats)
+moves into `deep-run-inner`, detached on a private `tmux -L deep` socket (`DEEP_NO_TMUX=1`
+runs it inline for tests); the foreground `deep-run` waits, then replays `.deep/<epoch>.out`
+and exits with `.rc`. Verified: killing the foreground `deep-run` with `kill -9` leaves the
+tmux job running to completion (`end rc=0 verify=pass`). Fixed `$0` symlink resolution so
+`deep-run` reached via `~/.local/bin` finds the real inner (it used to point at a
+nonexistent `~/.local/bin/deep-run-inner`). New Stop gate `deep-stop-gate.sh` (registered
+as a symlink in install): with `DEEP_TASK_FILE` set and this session not yet blocked, it
+runs `wo-verify`; rc∉{0,2} prints `{"decision":"block"}`, touches a marker, and logs to
+gate.log. Fixed a bash 3.2 parse bug where a variable directly before a full-width paren
+swallowed part of the name (`$vrc`→`${vrc}`). 17/17 (the 15 original checks now run with
+`DEEP_NO_TMUX=1`; two new checks: tmux `-L deep`/`new-session` argv, and the gate blocking
+once then staying silent). Registration lives in `config/settings.json` (not committed)
+as a new `hooks.Stop` entry.
+
+# 2026-09-16
+
+`deep-run` copies the caller's task file read-only into `$DC_HOME/work/.deep/{epoch}-task.md`
+(chmod 444) and hands deepclaude the copy via `-p` plus `DEEP_TASK_FILE`, so a live edit
+of the caller's own file never reaches the model; `test-deep-run.sh` now checks the
+snapshot content, its perms, and the env pointer (15/15, up from 11/11). The proxy harness
+default moved to `deep-harness.md`, and a failing 驗收 block now prints `CLAIM_MISMATCH`
+and exits nonzero (verified end-to-end through the real `wo-verify`). New `deep-lint`
+gates a task file's contract before dispatch — one-sentence task + one runnable read-only
+驗收 block + an out-of-block `預期：` line, ≤40 lines, no drift log.
+
+`deep-run` 把呼叫方的任務檔唯讀複製進 `$DC_HOME/work/.deep/{epoch}-task.md`（chmod 444），
+並經 `-p` 與 `DEEP_TASK_FILE` 交給 deepclaude，呼叫方自己檔案的即時修改永遠碰不到模型；
+`test-deep-run.sh` 現在檢查副本內容、權限與 env 指標（15/15，原 11/11）。代理 harness
+預設改成 `deep-harness.md`，驗收區塊失敗會印 `CLAIM_MISMATCH` 且回非零（經真 `wo-verify`
+端到端驗證）。新增 `deep-lint` 在派工前排擋任務檔契約——一句任務＋一個唯讀可跑的驗收
+區塊＋區塊外一行「預期：」，≤40 行，不寫偏移紀錄。
+
 # 2026-09-15
 
 `deep-run` falls back to `gh auth token` when `~/.creds/kv` has no GitHub token, so a

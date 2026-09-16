@@ -67,7 +67,11 @@ prompt:
 Methodology lives in the system prompt, not the task file.
 
 **Verification** — every run must end with a rerunnable command you can paste. See
-`wrappers.log` for the call + `transcript` for the full trace.
+`wrappers.log` for the call + `transcript` for the full trace. The log's `end` line
+carries `verify=pass|fail|none` (the mechanical judge's verdict), and any real failure
+is signalled via a nonzero `rc`: `TASK_TAMPERED` means the task file was changed while
+the run was in progress, `CLAIM_MISMATCH` means the 驗收 block actually failed when
+`wo-verify` re-ran it.
 
 **Known limits:**
 - Must be called via `deep-run` by its bare name — an absolute path won't match the
@@ -77,6 +81,30 @@ Methodology lives in the system prompt, not the task file.
 - `≤3` search queries per problem keeps hiring fast but can feel slow on hard tasks
   (a smoke test took 40 `gh` calls, 6.5 min, 29 turns to pick one of 5 candidates).
 - Interactive or vision-dependent tasks won't survive headless runs.
+
+**Two-layer split + Stop gate (R3/R6)** — `deep-run` keeps only the launch half (PATH,
+sandbox guard, GH_TOKEN, the read-only task snapshot, the `deep-run start` log line,
+`DEEP_TASK_FILE`) and hands the actual model run to `deep-run-inner`, detached into a
+private tmux socket: `tmux -L deep`. A `kill -9` on the foreground `deep-run` no longer
+kills the job — the tmux session survives and finishes, writing its stdout to
+`$DC_HOME/work/.deep/<epoch>.out` and its final rc to `.deep/<epoch>.rc`, which the
+(re-attached) `deep-run` replays. Set `DEEP_NO_TMUX=1` to run the inner directly
+(testing / debugging). A Stop hook (`deep-stop-gate.sh`) blocks — once, per session,
+marker file `work/.deep/stop-gate/<session_id>.blocked` — any Stop issued while the
+task's read-only copy still fails `wo-verify`, printing `{"decision":"block",…}` and
+logging pass/block/skip to `work/.deep/stop-gate/gate.log`. Interactive sessions
+(zero `DEEP_TASK_FILE`, or `stop_hook_active:true`) pass through silently.
+
+**兩層結構＋Stop 閘門（R3/R6）**：`deep-run` 只留 launch 半（PATH、沙箱偵測、GH_TOKEN、
+唯讀任務快照、`deep-run start` 日誌行、`DEEP_TASK_FILE`），把真正跑模型的
+`deep-run-inner` 用私有 tmux socket（`tmux -L deep`）detach 出去。前景 `deep-run`
+被 `kill -9` 不再殺掉工作——tmux session 存活跑完，stdout 寫到
+`$DC_HOME/work/.deep/<epoch>.out`、最終 rc 寫到 `.deep/<epoch>.rc`，`deep-run`（重新
+接上）再回放。設 `DEEP_NO_TMUX=1` 可直接跑 inner（測試／除錯）。Stop hook
+（`deep-stop-gate.sh`）在任務唯讀副本仍過不了 `wo-verify` 時，每 session 只擋一次
+（marker 檔 `work/.deep/stop-gate/<session_id>.blocked`），印
+`{"decision":"block",…}`，並把 pass/block/skip 記到 `work/.deep/stop-gate/gate.log`。
+互動 session（`DEEP_TASK_FILE` 為空，或 `stop_hook_active:true`）零影響直接放行。
 
 ### 中文說明
 
@@ -256,6 +284,13 @@ loop guard 無狀態——直接讀請求內容，所以 proxy 重啟或對話�
 **追蹤**的內容（絕不是工作目錄），對匯出結果跑一道洩漏閘門——絕對家目錄路徑、transcript
 slug、內部 fix log 編號、launchd uid target、憑證樣式、email——通過才推。`--dry-run`
 只顯示差異不提交。
+
+## Bench
+
+量 deep 是否飄移用的固定回歸：`bench/run.sh <a|b|c> <n>` 對三張固定任務做 n 輪
+（a＝補執行權限、b＝驗收自相矛盾、c＝SSOT 與驗收衝突）。每輪起 `bench/fixture.sh` 建
+fixture、`deep-run` 跑任務，判 pass/fail，回合細節寫進 `bench/results/<date>-<x>.log`
+（結果目錄已 gitignore），結尾印一行 `pass=<k>/<n>`。
 
 ## Install
 
