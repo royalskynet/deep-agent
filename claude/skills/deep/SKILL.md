@@ -12,7 +12,9 @@ description: 派工給 deep 執行人（deepclaude/CheaperInference，沙箱外�
 - **沒計畫** → scratchpad `deep/<slug>.md` 三段：**任務**（原文＋deep 不可能自己知道的前情：絕對路徑、限制、期望格式）／**驗收**（一條可重跑指令＋期望；想不出寫「自訂驗收並貼輸出」）／**不動**（可省）。
 - **驗收段每一步都要寫「預期輸出」**（指令＋它應該印出什麼）。沒有預期輸出的步驟等於邀請 deep 亂猜：它無法判斷成功與否，就會一直換做法試到「看起來對」為止。任務檔沒寫死的事，deep 一律不做——路徑、設定鍵、旗標、模型名要用就寫全，不留「照慣例」「自己找一下」。
 - 含憑證路徑字串（如 `.creds/*/.env`）用 Write tool 寫，Bash heredoc 會被 creds-egress-guard 攔。
-- **每份任務檔末尾固定附「## 禁止」段**，至少含：「`launchctl bootout/bootstrap/kickstart` 必帶完整 service target `gui/$(id -u)/<label>`；裸 domain 與 `launchctl reboot` 禁止；載入回 141/125 立即停手回報」（曾有一次裸跑 `bootout gui/<uid>` 拆掉整個登入 session，無頭機無法自救）。任務若涉及 launchd 載入，指令寫全、不留「照 fixindex 慣例」之類的省略。
+- **每份任務檔末尾固定附「## 禁止」段**，至少含兩條：
+  1. 「`launchctl bootout/bootstrap/kickstart` 必帶完整 service target `gui/$(id -u)/<label>`；裸 domain 與 `launchctl reboot` 禁止；載入回 141/125 立即停手回報」（曾有一次裸跑 `bootout gui/<uid>` 拆掉整個登入 session，無頭機無法自救）。任務若涉及 launchd 載入，指令寫全、不留「照 fixindex 慣例」之類的省略。
+  2. 「無頭機：禁止回報『請使用者手動貼 token／授權／執行指令』。憑證讀不到＝停手回報阻斷點與需要的 key 名，不要求人工補值。」
 
 ## 派工（唯 Bash 裸呼）
 - **Bash 直呼**：主 session 用 `run_in_background` 自己控進度、或指定 cwd／串多個任務。
@@ -24,6 +26,13 @@ description: 派工給 deep 執行人（deepclaude/CheaperInference，沙箱外�
 - 主 session 重跑驗收指令；宣告 ≠ 生效。
 - `tail -2 "$WLOG"`（預設 `~/Library/Logs/openclaw/wrappers.log`） 應有 `deep-run start`／`end rc=`。
 - deep 回報偶爾吞段 → 以 transcript 為準：`deep-run` 收尾已印 `tool_use=` 與 `last_tool_result:`；要全文就讀 `~/.deepclaude/config/projects/<cwd-slug>/*.jsonl`（slug＝cwd 把 `/` 與 `.` 都換成 `-`），`jq` 取 `tool_result`。
+
+## 已知坑（實測，2026-09-24）
+
+- **任務檔標題一律 `##`**。`deep-lint` 只認二級標題劃分段落；寫成 `# 禁止` 會被判定「禁令寫在正文」而 WARN，deep 也可能不認那段。
+- **`gh` 必須單獨原子指令**。deep 端 wrapper hook 擋非原子命令，`gh ... | head`、`gh ... && ...` 會被拒；拆成獨立一次呼叫。
+- **腳本吃的環境變數要在任務檔寫死絕對路徑**。例：research skill 的 `RESEARCH_BUDGET` 不設就回退吃 cwd 的 `./.research-budget.json`，cwd 一偏就扣錯帳或完全不記帳。凡「不設就有預設值」的變數，一律當成必填。
+- **沙箱假陰性不得寫進任務檔當前提**。主 session 沙箱連不出去的 host（實測 `r.jina.ai` 回 `URLError`）在 deep 端正常 200。不要因為主 session 試不通就在任務檔裡預先排除某通道，交給 deep 實測。
 
 ## 不做
 - 需要 Anthropic 推理深度的決策（設計權衡、含糊需求解讀）留主 session。

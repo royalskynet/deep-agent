@@ -1,21 +1,89 @@
 #!/usr/bin/env bash
 # deep-lint <task.md> — pre-dispatch contract check before handing a task to deep-run.
-#   A task file must carry exactly: one sentence task + one runnable 驗收 shell block
-#   (read-only asserts, failing nonzero) + a "預期：" line outside the block + an
-#   optional 不動 section, ≤40 lines, no "上次偏移紀錄". This is a mechanical gate:
-#   wo-verify --dry only checks the 驗收 block parses; it cannot judge prose, which is
-#   the 派工 side's job (see claude/commands/deep.md).
+#   A task file must carry one runnable 驗收 shell block plus an out-of-fence 預期 line.
+#   The line budget is 40 lines for one task, then +20 per additional ### task.
+#   wo-verify --dry only checks the 驗收 block parses; this is the prose-side gate.
 # exit 0 = OK (or warn-only), 1 = no runnable 驗收 block.
 set -u
 wo="${1:?用法: deep-lint <task.md>}"
 [ -f "$wo" ] || { echo "deep-lint: 檔案不存在 $wo"; exit 1; }
-if ! wo-verify "$wo" --dry >/dev/null 2>&1; then
+# deep-lint is reached through a ~/.local/bin symlink; resolve it so the vendored
+# wo-verify in this same directory is found even when PATH hides it.
+self=$0
+if [ -L "$self" ]; then
+  link_dir="$(cd "$(dirname "$self")" && pwd)"
+  tgt="$(readlink "$self")"
+  case "$tgt" in /*) real="$tgt" ;; *) real="$link_dir/$tgt" ;; esac
+  self="$real"
+fi
+WV="$(cd "$(dirname "$self")" && pwd)/wo-verify"
+command -v "$WV" >/dev/null || WV="$(command -v wo-verify || true)"
+if [ -z "$WV" ]; then
+  # 沒檢查 ≠ 檢查了而且不符：明確降級，不印 LINT FAIL、不 exit 非零。
+  echo "wo-verify absent; acceptance block not machine-checked" >&2
+  echo "LINT OK (unchecked)"
+  exit 0
+fi
+if ! "$WV" "$wo" --dry >/dev/null 2>&1; then
   echo "LINT FAIL: no runnable 驗收 block"
   exit 1
 fi
-n=$(wc -l < "$wo")
-if [ "$n" -gt 40 ]; then
-  echo "LINT WARN: $n lines (>40)"
-else
-  echo "LINT OK"
+warn=0
+
+expected=$(awk '
+  /^```/ { fence = !fence; next }
+  !fence && /^[[:space:]]*預期[：:]/ { found = 1 }
+  END { exit !found }
+' "$wo")
+if [ "$?" -ne 0 ]; then
+  echo 'LINT WARN: 缺少 fence 外的「預期：」行'
+  warn=1
 fi
+
+# deep only treats the "## 禁止" section as a hard constraint; a prohibition left in
+# the prose gets walked past (2026-09-21: "不要手改 settings.json" in the body, deep
+# hand-edited it anyway and reported success). Flag prose prohibitions so they get
+# moved. Warn-only: the 派工 side still judges the prose.
+loose=$(awk '
+  /^##+[[:space:]]*禁止/ { inban = 1; next }
+  /^##[[:space:]]/       { inban = 0 }
+  /^#/                   { next }            # a heading is not a prohibition
+  /^```/                 { fence = !fence; next }
+  !inban && !fence && /不要|禁止|不得|禁用|勿/ { printf "  L%d: %s\n", NR, $0 }
+' "$wo")
+if [ -n "$loose" ]; then
+  echo "LINT WARN: 禁令寫在正文，deep 只認「## 禁止」段——搬過去："
+  printf '%s\n' "$loose"
+  warn=1
+fi
+
+n=$(wc -l < "$wo")
+tasks=$(awk '
+  /^##[[:space:]]+任務[[:space:]]*$/ { in_task = 1; next }
+  /^##[[:space:]]/ { in_task = 0 }
+  in_task && /^###[[:space:]]/ { count++ }
+  END { print count ? count : 1 }
+' "$wo")
+limit=$((40 + (tasks - 1) * 20))
+if [ "$n" -gt "$limit" ]; then
+  echo "LINT WARN: $n lines (> $limit; tasks=$tasks, formula=40+20*(tasks-1))"
+  warn=1
+fi
+
+# 探針閘門：工單若描述 API 請求形狀（URL 含 vN / POST / 請求形狀 / wire shape）卻無
+# 探針證據（探針： 行或 http=NNN），警告先跑 api-probe 貼 4xx 錯誤體（fix 9356）。
+# 形狀是 zod 錯誤體不是 struct 欄位名；硬要寫形狀就必須有實打過的證據。
+probe=$(awk '
+  /^```/ { fence = !fence; next }
+  /^[[:space:]]*探針[：:]/ { has_probe = 1; next }
+  /http=[0-9][0-9][0-9]/ { has_probe = 1; next }
+  !fence && /https?:\/\/[^ ]+\/v[0-9]|POST \/|請求形狀|wire shape/ { shaped = 1 }
+  END { if (shaped && !has_probe) print 1 }
+' "$wo")
+if [ -n "$probe" ]; then
+  echo "LINT WARN: 工單含 API 請求形狀但無探針證據——先 api-probe <url> <keyfile> 貼 http=<code>＋錯誤體（fix 9356）"
+  warn=1
+fi
+
+[ "$warn" -eq 0 ] && echo "LINT OK"
+exit 0

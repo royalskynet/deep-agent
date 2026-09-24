@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Self-check for deep-lint's prose-prohibition warning. No network, no model: two
+# fixture task files, one with a 禁令 left in the body and one with it moved into the
+# 「## 禁止」 section. Run: deep-agent/bin/test-deep-lint.sh
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/deep-lint-test.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+rc=0
+
+body() {  # $1 = the 任務 line
+  cat <<EOF
+# 測試用工單
+
+## 任務
+
+$1
+
+## 驗收
+
+\`\`\`bash
+set -e
+test -d /
+\`\`\`
+
+預期：無輸出，rc=0。
+
+## 禁止
+
+EOF
+}
+
+body '把 X 設定改掉。不要手改 settings.json，用 CLI。' > "$tmp/loose.md"
+echo '- `launchctl bootout` 必帶完整 service target。' >> "$tmp/loose.md"
+
+body '把 X 設定改掉，走 CLI。' > "$tmp/tight.md"
+echo '- 禁手改 settings.json，一律走 CLI。' >> "$tmp/tight.md"
+
+cat <<'EOF' > "$tmp/no-expected.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+test -d /
+```
+## 禁止
+- 禁止改 fixture。
+EOF
+
+cat <<'EOF' > "$tmp/fenced-expected.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+預期：這行在 fence 內，不算契約。
+test -d /
+```
+## 禁止
+- 禁止改 fixture。
+EOF
+
+cat <<'EOF' > "$tmp/one-long.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+for i in $(seq 1 35); do printf '補充 %s。\n' "$i" >> "$tmp/one-long.md"; done
+
+cat <<'EOF' > "$tmp/three-tasks.md"
+# 測試用工單
+## 任務
+### 一
+完成一。
+### 二
+完成二。
+### 三
+完成三。
+## 驗收
+```bash
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+for i in $(seq 1 45); do printf '補充 %s。\n' "$i" >> "$tmp/three-tasks.md"; done
+
+out=$("$HERE/deep-lint" "$tmp/no-expected.md" 2>&1)
+case "$out" in *'缺少 fence 外的「預期：」行'*) echo 'ok: 缺預期會警告';; *) echo "FAIL: 缺預期未警告 — $out"; rc=1;; esac
+out=$("$HERE/deep-lint" "$tmp/fenced-expected.md" 2>&1)
+case "$out" in *'缺少 fence 外的「預期：」行'*) echo 'ok: fence 內假預期不算';; *) echo "FAIL: fence 內假預期誤判 — $out"; rc=1;; esac
+out=$("$HERE/deep-lint" "$tmp/tight.md" 2>&1)
+case "$out" in 'LINT OK') echo 'ok: 有預期不誤報';; *) echo "FAIL: 有預期誤報 — $out"; rc=1;; esac
+out=$("$HERE/deep-lint" "$tmp/one-long.md" 2>&1)
+case "$out" in *'tasks=1, formula=40+20*(tasks-1)'*) echo 'ok: 單任務超限警告';; *) echo "FAIL: 單任務超限未警告 — $out"; rc=1;; esac
+out=$("$HERE/deep-lint" "$tmp/three-tasks.md" 2>&1)
+case "$out" in 'LINT OK') echo 'ok: 三任務合理長度不警告'; echo 'ok: 多任務合理長度不警告';; *) echo "FAIL: 三任務長度誤報 — $out"; rc=1;; esac
+
+out=$("$HERE/deep-lint" "$tmp/loose.md" 2>&1)
+case "$out" in
+  *'禁令寫在正文'*) echo "ok: 正文禁令被抓到" ;;
+  *) echo "FAIL: 正文禁令沒被抓到 — $out"; rc=1 ;;
+esac
+
+out=$("$HERE/deep-lint" "$tmp/tight.md" 2>&1)
+case "$out" in
+  'LINT OK') echo "ok: 禁令在禁止段時不誤報" ;;
+  *) echo "FAIL: 誤報 — $out"; rc=1 ;;
+esac
+
+# 探針閘門 fixtures (fix 9356)
+body '呼叫 API https://openrouter.ai/api/v1/systemone，POST /。' > "$tmp/probe-url.md"
+body '呼叫 API https://openrouter.ai/api/v1/systemone，POST /。探針：http=400 …' > "$tmp/probe-ev.md"
+cat <<'EOF' > "$tmp/probe-fenced.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+curl -X POST https://openrouter.ai/api/v1/systemone
+```
+## 禁止
+- 禁止改 fixture。
+EOF
+
+out=$("$HERE/deep-lint" "$tmp/probe-url.md" 2>&1)
+case "$out" in
+  *'無探針證據'*) echo 'ok: 正文有 URL 無探針→警告' ;;
+  *) echo "FAIL: URL 無探針未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/probe-ev.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: URL 加探針行→無警告' ;;
+  *) echo "FAIL: 有探針誤報 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/probe-fenced.md" 2>&1)
+case "$out" in
+  *'無探針證據'*) echo "FAIL: fence 內 URL 誤報 — $out"; rc=1 ;;
+  *) echo 'ok: URL 只在 fence 內→無警告' ;;
+esac
+
+exit "$rc"

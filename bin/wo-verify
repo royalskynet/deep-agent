@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# wo-verify <WO.md> [--dry] — 機械驗收（裁判不是 LLM）：
+#   抽出工單「驗收／Verify」章節（含其子標題）裡所有 shell 型 ``` 區塊（無語言標記或 bash/sh/zsh/shell），
+#   串成一支腳本以 `set -e` 跑（無 pipefail，見下；timeout 600s），印全部輸出。
+#   exit：0 = 全過；2 = 工單沒有可跑驗收區塊；其它 = 腳本首個失敗指令的 rc。
+#   --dry：只抽出並 bash -n 語法檢查（wo-lint 用）。
+# 規則（dispatch skill 六條檢查 #2）：驗收區塊必須唯讀、失敗要非零退出（test／grep -q／diff），
+#   「預期：…」這種給人看的文字放區塊外。行首 `$ ` 提示符會被剝掉。
+set -u
+wo="${1:?用法: wo-verify <WO.md> [--dry]}"; dry=0; [ "${2:-}" = "--dry" ] && dry=1
+[ -f "$wo" ] || { echo "wo-verify: 檔案不存在 $wo"; exit 2; }
+script=$(awk '
+  # fence 狀態先判，全文追蹤（不限驗收章節）：fence 內的 "### xxx" 是內容不是標題
+  /^```/ { if (inblk) { inblk = 0 } else { inblk = 1; take = insec && ($0 ~ /^```(bash|sh|zsh|shell)?[[:space:]]*$/) }; next }
+  inblk { if (take) { sub(/^\$ /, ""); print }; next }
+  /^#+ / {
+    lvl = index($0, " ") - 1
+    if (insec && lvl <= seclvl) insec = 0
+    if (!insec && ($0 ~ /驗收/ || $0 ~ /[Vv]erif/)) { insec = 1; seclvl = lvl }
+  }
+' "$wo")
+[ -n "$script" ] || { echo "wo-verify: 沒有可跑的驗收區塊（none）"; exit 2; }
+if [ "$dry" -eq 1 ]; then printf '%s\n' "$script" | bash -n; exit $?; fi
+# 不開 pipefail：`cmd | grep -q` 命中即關管，cmd 續寫吃 SIGPIPE → 141 假失敗（09-22 實證 launchctl print/claude mcp get）
+printf 'set -e\n%s\n' "$script" | timeout 600 bash 2>&1
+rc=${PIPESTATUS[1]}
+echo "--- wo-verify rc=$rc"
+exit "$rc"

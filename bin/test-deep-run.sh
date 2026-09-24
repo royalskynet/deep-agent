@@ -10,6 +10,10 @@ trap 'rm -rf "$tmp"' EXIT
 # deep-run prepends $HOME/.local/bin to PATH, so that is where the stub has to live
 # for it to win — pointing PATH at a scratch dir is not enough.
 mkdir -p "$tmp/home/.local/bin" "$tmp/work" "$tmp/home/.deepclaude/config" "$tmp/home/.creds/kv"
+# Pin DC_HOME into the scratch HOME. deep-run defaults it to $HOME/.deepclaude, so a
+# stray DC_HOME in the caller's env (e.g. on the m1 dev box) would otherwise redirect
+# the snapshot into the real runtime copy and silently break every assertion below.
+export DC_HOME="$tmp/home/.deepclaude"
 touch "$tmp/home/.deepclaude/config/deep-system.md"
 echo 'task' > "$tmp/task.md"
 
@@ -92,6 +96,20 @@ fout=$(HOME="$tmp/home" CREDS_DIR="$tmp/home/.creds" WLOG="$tmp/w2.log" HTTPS_PR
 check "failing 驗收 block ⇒ CLAIM_MISMATCH, rc≠0" \
   '[ "$frc" != 0 ] && grep -q "CLAIM_MISMATCH" <<< "$fout"'
 
+# Guard (wo-verify absent): 工具缺席不得渲染成任務失敗。移開同目錄 vendor 版、PATH 剝掉
+# wo-verify 後收尾檢查必須 rc=0、不印 CLAIM_MISMATCH、印明確降級訊息。
+(
+  trap 'mv "$tmp/wo-verify.hidden" "$HERE/wo-verify"' EXIT
+  mv "$HERE/wo-verify" "$tmp/wo-verify.hidden"
+  PATH="$tmp/home/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  gout=$(HOME="$tmp/home" CREDS_DIR="$tmp/home/.creds" WLOG="$tmp/wg.log" HTTPS_PROXY="" \
+         STUB_ARGV="$tmp/argvg" STUB_ENV="$tmp/envg" DEEP_NO_TMUX=1 \
+         "$HERE/deep-run" "$tmp/task.md" "$tmp/work" 2>&1); grc=$?
+  check "wo-verify absent ⇒ no CLAIM_MISMATCH, rc=0, degrade msg" \
+    '[ "$grc" = 0 ] && ! grep -q "CLAIM_MISMATCH" <<< "$gout" && grep -q "not machine-checked" <<< "$gout"'
+)
+[ -x "$HERE/wo-verify" ] || { echo "FAIL: wo-verify not restored"; fail=1; }
+
 # R6 (a): default mode must detach the model run into a private tmux session. A fake
 # `tmux` (earlier on PATH than the real one, since deep-run prepends ~/.local/bin)
 # records argv instead of actually creating a session. DEEP_NO_TMUX is unset.
@@ -118,5 +136,5 @@ g2=$(echo '{"session_id":"t1","stop_hook_active":false}' | DEEP_TASK_FILE="$tmp/
 check "Stop gate blocks failing 驗收 once, then silent" \
   '[ -n "$(grep -E "\"decision\": *\"block\"" <<< "$g1")" ] && [ -z "$g2" ]'
 
-[ "$fail" = 0 ] && echo "OK: 17/17 deep-run invocation checks passed"
+[ "$fail" = 0 ] && echo "OK: 18/18 deep-run invocation checks passed"
 exit "$fail"

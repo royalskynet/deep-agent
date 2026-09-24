@@ -48,13 +48,23 @@ RC="$DC_HOME/work/.deep/$EPOCH.rc"
   [ "$new_hash" = "$orig_hash" ] && [ "$copy_hash" = "$orig_hash" ] || tampered=1
   # R1: mechanical judge on the ORIGINAL caller file.
   verify=pass
-  wo_output=$(wo-verify "$f" 2>&1); wo_rc=$?
-  printf '%s\n' "$wo_output"
-  case "$wo_rc" in
-    0) verify=pass ;;
-    2) verify=none ;;
-    *) verify=fail ;;
-  esac
+  # Vendored judge in this same directory first, PATH fallback; neither ⇒ explicit
+  # degrade: no machine check, which must not render as a failed check (no
+  # CLAIM_MISMATCH, no nonzero exit).
+  WV="$(dirname "$0")/wo-verify"
+  command -v "$WV" >/dev/null || WV="$(command -v wo-verify || true)"
+  if [ -z "$WV" ]; then
+    echo "wo-verify absent; acceptance block not machine-checked" >&2
+    verify=none
+  else
+    wo_output=$("$WV" "$f" 2>&1); wo_rc=$?
+    printf '%s\n' "$wo_output"
+    case "$wo_rc" in
+      0) verify=pass ;;
+      2) verify=none ;;
+      *) verify=fail ;;
+    esac
+  fi
   echo "$(date '+%F %T') deep-run end rc=$rc verify=$verify $f" >> "$WLOG"
 
   # Summary anti-hallucination: append objective transcript stats so the model's final

@@ -148,6 +148,10 @@ deep-run <task.md> [cwd]
 # 不動        （絕不碰的東西）
 ```
 
+工單若描述 API 請求形狀（URL 含 `vN`、`POST /`、`請求形狀`、`wire shape`）必須附探針
+證據：`探針：http=<code> …` 行（`api-probe <url> <keyfile>` 實打拿到的 4xx 錯誤體，
+fix 9356）；deep-lint 會 warn 缺證據的形狀描寫——zod 錯誤體才是真 schema。
+
 方法論在 system prompt，不在任務檔。
 
 **驗證**——每次 run 結尾必須有可重跑的指令。呼叫細節看 `wrappers.log`，完整軌跡
