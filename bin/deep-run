@@ -18,6 +18,10 @@
 # kv mirror instead; that is what lets deep `gh search` for an existing wheel.
 set -u
 
+# 全身包進 main()：bash 一次解析完整個函式才執行，工單就地改寫 deep-run 本身時
+# 不會讓剩下的腳本依舊位元組偏移續讀（2026-09-24 實證：收尾變成
+# `line 106: R/<epoch>.rc): No such file or directory`，輸出與 rc 全丟）。
+main() {
 DC_HOME="${DC_HOME:-$HOME/.deepclaude}"
 CREDS_DIR="${CREDS_DIR:-$HOME/.creds}"
 # launchd and sandbox-excluded shells hand over a minimal PATH; deepclaude and node
@@ -100,3 +104,5 @@ else
 fi
 cat "$DEEP_TASK_DIR/$EPOCH.out"
 exit "$(cat "$DEEP_TASK_DIR/$EPOCH.rc")"
+}
+main "$@"
