@@ -7,6 +7,9 @@
 # 規則（dispatch skill 六條檢查 #2）：驗收區塊必須唯讀、失敗要非零退出（test／grep -q／diff），
 #   「預期：…」這種給人看的文字放區塊外。行首 `$ ` 提示符會被剝掉。
 set -u
+# 全身包進 main()：bash 一次解析完整個函式才執行，工單就地改寫本檔時剩下的腳本
+# 不會依舊位元組偏移續讀而錯位（fix-store 9499）。
+main() {
 wo="${1:?用法: wo-verify <WO.md> [--dry|--dump]}"; dry=0; [ "${2:-}" = "--dry" ] && dry=1
 [ -f "$wo" ] || { echo "wo-verify: 檔案不存在 $wo"; exit 2; }
 script=$(awk '
@@ -28,3 +31,5 @@ printf 'set -e\n%s\n' "$script" | timeout 600 bash 2>&1
 rc=${PIPESTATUS[1]}
 echo "--- wo-verify rc=$rc"
 exit "$rc"
+}
+main "$@"

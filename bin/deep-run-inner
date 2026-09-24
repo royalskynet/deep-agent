@@ -9,6 +9,9 @@
 # env that tmux does not carry over is handed to it explicitly by deep-run (see the
 # `env` prefix); DEEP_NO_TMUX=1 direct invocation inherits deep-run's own exports.
 set -u
+# 全身包進 main()：bash 一次解析完整個函式才執行，工單就地改寫本檔時剩下的腳本
+# 不會依舊位元組偏移續讀而錯位（fix-store 9499）。
+main() {
 
 copy=$1; d=$2; f=$3; EPOCH=$4
 DC_HOME="${DC_HOME:-$HOME/.deepclaude}"
@@ -88,3 +91,5 @@ RC="$DC_HOME/work/.deep/$EPOCH.rc"
   printf '%s' "$final_rc" > "$RC"
   exit "$final_rc"
 } 2>&1 | tee -a "$OUT"
+}
+main "$@"
