@@ -21,6 +21,9 @@ GHK="$CREDS_DIR/kv/GITHUB_PERSONAL_ACCESS_TOKEN.txt"
 [ -r "$GHK" ] && GH_TOKEN=$(cat "$GHK") && export GH_TOKEN
 # No kv mirror (fresh machine): fall back to the logged-in gh keyring.
 [ -z "${GH_TOKEN:-}" ] && GH_TOKEN=$(gh auth token 2>/dev/null) && export GH_TOKEN
+# deep-or: OpenRouter key 比照 GH_TOKEN 在此解析，不經 tmux 命令列。
+ORK="$CREDS_DIR/kv/OPENROUTER_FREEROUTER_API_KEY.txt"
+[ -z "${OPENROUTER_API_KEY:-}" ] && [ -r "$ORK" ] && OPENROUTER_API_KEY=$(cat "$ORK") && export OPENROUTER_API_KEY
 
 OUT="$DC_HOME/work/.deep/$EPOCH.out"
 RC="$DC_HOME/work/.deep/$EPOCH.rc"
