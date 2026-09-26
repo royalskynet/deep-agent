@@ -25,4 +25,5 @@ ln -sfn "$REPO/hooks/deep-stop-gate.sh" ~/.deepclaude/config/hooks/deep-stop-gat
 echo "Installed symlinks:"
 for t in ~/.local/bin/deep-run ~/.local/bin/deep-lint ~/.local/bin/api-probe ~/.local/bin/wo-verify ~/.claude/skills/deep ~/.claude/commands/deep.md ~/.deepclaude/config/hooks/deep-stop-gate.sh; do
   ls -l "$t"
+  [ -e "$t" ] || { echo "DANGLING: $t (fix 9625)"; exit 1; }
 done
