@@ -33,6 +33,7 @@ description: 派工給 deep 執行人（deepclaude/CheaperInference，沙箱外�
 - **`gh` 必須單獨原子指令**。deep 端 wrapper hook 擋非原子命令，`gh ... | head`、`gh ... && ...` 會被拒；拆成獨立一次呼叫。
 - **腳本吃的環境變數要在任務檔寫死絕對路徑**。例：research skill 的 `RESEARCH_BUDGET` 不設就回退吃 cwd 的 `./.research-budget.json`，cwd 一偏就扣錯帳或完全不記帳。凡「不設就有預設值」的變數，一律當成必填。
 - **沙箱假陰性不得寫進任務檔當前提**。主 session 沙箱連不出去的 host（實測 `r.jina.ai` 回 `URLError`）在 deep 端正常 200。不要因為主 session 試不通就在任務檔裡預先排除某通道，交給 deep 實測。
+- **`verify=pass` 只證明斷言，不證明沒改壞**（實測，2026-09-26）。deep 會順手刪掉既有 env 覆寫（`process.env.X || 預設`）、改亂註解、漏 import 只在另一平台分支才炸。`# 驗收` 要含：(1) 必須保留的既有行為的 `grep -q` 斷言；(2) 至少一條真實 CLI 端到端指令（不只單元測試）。主 session 收件後仍看 `git diff`。
 
 ## 不做
 - 需要 Anthropic 推理深度的決策（設計權衡、含糊需求解讀）留主 session。

@@ -19,7 +19,7 @@ ln -sfn "$REPO/claude/skills/deep" ~/.claude/skills/deep
 ln -sfn "$REPO/claude/commands/deep.md" ~/.claude/commands/deep.md
 
 mkdir -p ~/.deepclaude/config/hooks
-ln -sfn "$REPO/deep-agent/hooks/deep-stop-gate.sh" ~/.deepclaude/config/hooks/deep-stop-gate.sh
+ln -sfn "$REPO/hooks/deep-stop-gate.sh" ~/.deepclaude/config/hooks/deep-stop-gate.sh
 
 echo "Installed symlinks:"
 for t in ~/.local/bin/deep-run ~/.local/bin/deep-lint ~/.local/bin/api-probe ~/.claude/skills/deep ~/.claude/commands/deep.md ~/.deepclaude/config/hooks/deep-stop-gate.sh; do

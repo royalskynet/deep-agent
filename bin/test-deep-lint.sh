@@ -149,4 +149,80 @@ case "$out" in
   *) echo 'ok: URL 只在 fence 內→無警告' ;;
 esac
 
+# clean-tree 閘門 fixtures (fix 9620)
+cat <<'EOF' > "$tmp/clean-noscratch.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+git status --porcelain >/dev/null
+[ -z "$(git status --porcelain)" ]
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/clean-scratch.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+git status --porcelain >/dev/null
+[ -z "$(git status --porcelain)" ]
+```
+預期：rc=0。
+## 不動
+- scratch 一律放 $TMPDIR，不進 repo。
+EOF
+
+out=$("$HERE/deep-lint" "$tmp/clean-noscratch.md" 2>&1)
+case "$out" in
+  *'clean-tree 斷言'*) echo 'ok: clean-tree 無 scratch 位置→警告' ;;
+  *) echo "FAIL: clean-tree 無 scratch 未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/clean-scratch.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: clean-tree 有寫 scratch 位置→不警告' ;;
+  *) echo "FAIL: 有 scratch 位置誤報 — $out"; rc=1 ;;
+esac
+
+# reporter 閘門 fixtures (fix 9617)
+cat <<'EOF' > "$tmp/test-noreporter.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+npm test 2>&1 | grep -E '^# fail' | grep -q '^# fail 0'
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/test-reporter.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+npm test -- --test-reporter=tap 2>&1 | grep -E '^# (pass|fail)' | grep -q '^# fail 0'
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+
+out=$("$HERE/deep-lint" "$tmp/test-noreporter.md" 2>&1)
+case "$out" in
+  *'--test-reporter'*) echo 'ok: npm test 無 reporter→警告' ;;
+  *) echo "FAIL: npm test 無 reporter 未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/test-reporter.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: 有 --test-reporter=tap→不警告' ;;
+  *) echo "FAIL: 有 reporter 誤報 — $out"; rc=1 ;;
+esac
+
 exit "$rc"

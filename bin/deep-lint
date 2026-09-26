@@ -99,5 +99,22 @@ if [ -n "$probe" ]; then
   warn=1
 fi
 
+# clean-tree 斷言閘門：驗收有 git status --porcelain 但工單沒寫 scratch 放哪，
+# deep 把草稿留在 repo 內會讓 clean-tree 假紅（fix 9620）。
+dump=$("$WV" "$wo" --dump 2>/dev/null)
+if printf '%s' "$dump" | grep -q 'git status --porcelain' \
+   && ! grep -Eq 'TMPDIR|mktemp|scratch|草稿' "$wo"; then
+  echo 'LINT WARN: 驗收有 clean-tree 斷言但工單沒寫 scratch 放哪——「## 不動」段明寫 scratch 放 $TMPDIR，不進 repo（fix 9620）'
+  warn=1
+fi
+
+# reporter 閘門：驗收 grep 測試框架輸出但沒固定 reporter，node ≥20 預設 spec 無
+# 「# fail」行，grep 必空回 1 → 假紅（fix 9617）。
+if printf '%s' "$dump" | grep -Eq 'npm test|node --test' \
+   && ! printf '%s' "$dump" | grep -q -- '--test-reporter'; then
+  echo 'LINT WARN: 驗收 grep 測試輸出但未指定 --test-reporter——node≥20 預設 spec 格式無「# fail」行，加 --test-reporter=tap（fix 9617）'
+  warn=1
+fi
+
 [ "$warn" -eq 0 ] && echo "LINT OK"
 exit 0
