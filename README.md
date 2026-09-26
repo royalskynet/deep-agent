@@ -150,7 +150,8 @@ deep-run <task.md> [cwd]
 
 工單若描述 API 請求形狀（URL 含 `vN`、`POST /`、`請求形狀`、`wire shape`）必須附探針
 證據：`探針：http=<code> …` 行（`api-probe <url> <keyfile>` 實打拿到的 4xx 錯誤體，
-fix 9356）；deep-lint 會 warn 缺證據的形狀描寫——zod 錯誤體才是真 schema。
+fix 9356）；deep-lint 會 warn 缺證據的形狀描寫——zod 錯誤體才是真 schema。deep-lint
+閘門完整清單看 `deep-lint` 檔內註解與 `test-deep-lint.sh` fixtures。
 
 方法論在 system prompt，不在任務檔。
 

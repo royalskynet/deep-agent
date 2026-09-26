@@ -225,4 +225,232 @@ case "$out" in
   *) echo "FAIL: 有 reporter 誤報 — $out"; rc=1 ;;
 esac
 
+# ---- 六條新閘門 fixtures (fix 9215/9624, 9341, 9471, 9216, 9478, 9206) ----
+
+# grep -c (fix 9215/9624)
+cat <<'EOF' > "$tmp/grepc-bad.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+grep -c foo /etc/hosts
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/grepc-good.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+[ "$(grep -c foo /etc/hosts)" = 0 ]
+grep -c foo /etc/hosts || true
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+out=$("$HERE/deep-lint" "$tmp/grepc-bad.md" 2>&1)
+case "$out" in
+  *'fix 9215/9624'*) echo 'ok: grep -c 裸用→警告' ;;
+  *) echo "FAIL: grep -c 裸用未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/grepc-good.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: grep -c 包進 $() 或 || true→不警告' ;;
+  *) echo "FAIL: grep -c 安全寫法誤報 — $out"; rc=1 ;;
+esac
+
+# pipefail (fix 9341)
+cat <<'EOF' > "$tmp/pipefail-bad.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+set -o pipefail
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/pipefail-good.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+out=$("$HERE/deep-lint" "$tmp/pipefail-bad.md" 2>&1)
+case "$out" in
+  *'fix 9341'*) echo 'ok: 自開 pipefail→警告' ;;
+  *) echo "FAIL: pipefail 未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/pipefail-good.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: 無 pipefail→不警告' ;;
+  *) echo "FAIL: 無 pipefail 誤報 — $out"; rc=1 ;;
+esac
+
+# <佔位符> (fix 9471)
+cat <<'EOF' > "$tmp/placehold-bad.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+cat <file> > /dev/null
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/placehold-good.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+cat < /etc/hosts > /dev/null
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+out=$("$HERE/deep-lint" "$tmp/placehold-bad.md" 2>&1)
+case "$out" in
+  *'fix 9471'*) echo 'ok: <佔位符>→警告' ;;
+  *) echo "FAIL: <佔位符> 未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/placehold-good.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: 真重導向 < / 不誤報' ;;
+  *) echo "FAIL: 真重導向誤報 — $out"; rc=1 ;;
+esac
+
+# 憑證變數 (fix 9216)
+cat <<'EOF' > "$tmp/cred-bad.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+echo "$MY_TOKEN"
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/cred-good.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+[ -n "$MY_TOKEN" ] && echo has_token || echo no_token
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+out=$("$HERE/deep-lint" "$tmp/cred-bad.md" 2>&1)
+case "$out" in
+  *'fix 9216'*) echo 'ok: echo 印憑證變數→警告' ;;
+  *) echo "FAIL: echo 印憑證變數未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/cred-good.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: 印布林不誤報' ;;
+  *) echo "FAIL: 印布林誤報 — $out"; rc=1 ;;
+esac
+
+# 一級標題 (fix 9478)
+cat <<'EOF' > "$tmp/h1-bad.md"
+# 測試用工單
+# 任務
+完成 fixture。
+## 驗收
+```bash
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/h1-good.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+out=$("$HERE/deep-lint" "$tmp/h1-bad.md" 2>&1)
+case "$out" in
+  *'fix 9478'*) echo 'ok: 一級段落標題→警告' ;;
+  *) echo "FAIL: 一級標題未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/h1-good.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: 二級標題不誤報' ;;
+  *) echo "FAIL: 二級標題誤報 — $out"; rc=1 ;;
+esac
+
+# date -u (fix 9206)
+cat <<'EOF' > "$tmp/utc-bad.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+d=$(date -u +%F)
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+cat <<'EOF' > "$tmp/utc-good.md"
+# 測試用工單
+## 任務
+完成 fixture。
+## 驗收
+```bash
+d=$(date +%F)
+test -d /
+```
+預期：rc=0。
+## 禁止
+- 禁止改 fixture。
+EOF
+out=$("$HERE/deep-lint" "$tmp/utc-bad.md" 2>&1)
+case "$out" in
+  *'fix 9206'*) echo 'ok: date -u→警告' ;;
+  *) echo "FAIL: date -u 未警告 — $out"; rc=1 ;;
+esac
+out=$("$HERE/deep-lint" "$tmp/utc-good.md" 2>&1)
+case "$out" in
+  'LINT OK') echo 'ok: date +%F 不誤報' ;;
+  *) echo "FAIL: date +%F 誤報 — $out"; rc=1 ;;
+esac
+
 exit "$rc"

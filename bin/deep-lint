@@ -25,8 +25,7 @@ if [ -z "$WV" ]; then
   exit 0
 fi
 if ! "$WV" "$wo" --dry >/dev/null 2>&1; then
-  echo "LINT FAIL: no runnable 驗收 block"
-  exit 1
+  fail_block=1
 fi
 warn=0
 
@@ -116,5 +115,50 @@ if printf '%s' "$dump" | grep -Eq 'npm test|node --test' \
   warn=1
 fi
 
+# grep -c 閘門：零命中回 1，set -e 下整段中止（fix 9215/9624）。
+# 包進 $( ) 或行尾加 || true 才算安全寫法。
+if printf '%s\n' "$dump" | grep -E 'grep[[:space:]]+-[A-Za-z]*c' \
+   | grep -Ev '\$\(' | grep -Ev '[|][|][[:space:]]*true$' | grep -q .; then
+  echo 'LINT WARN: grep -c 零命中回 1，set -e 下整段中止——包進 $( ) 或加 || true（fix 9215/9624）'
+  warn=1
+fi
+
+# pipefail 閘門：驗收自開 pipefail，cmd | grep -q 命中即關管回 141 假紅（fix 9341）。
+if printf '%s\n' "$dump" | grep -q pipefail; then
+  echo 'LINT WARN: 驗收區塊自開 pipefail，cmd | grep -q 命中即關管回 141 假紅——wo-verify 故意不開，刪掉（fix 9341）'
+  warn=1
+fi
+
+# <佔位符> 閘門：bash 當重導向解析（fix 9471）。<< <& < / 2> &> 這類真重導向不含 <word>
+# 所以不會誤中。
+if printf '%s\n' "$dump" | grep -Eq '<[A-Za-z_][A-Za-z0-9_-]*>'; then
+  echo 'LINT WARN: 驗收含 <佔位符>，bash 當重導向解析——填成真值（fix 9471）'
+  warn=1
+fi
+
+# 憑證洩漏閘門：echo／printf 行印出疑似憑證變數（fix 9216）。
+if printf '%s\n' "$dump" | grep -E '^[[:space:]]*(echo|printf)[[:space:]]' \
+   | grep -Eq '\$[A-Za-z0-9_]*(TOK|KEY|TOKEN|SECRET|PASS)[A-Za-z0-9_]*'; then
+  echo 'LINT WARN: 驗收印出疑似憑證變數，會洩進 transcript——改印布林／計數（fix 9216）'
+  warn=1
+fi
+
+# 一級標題閘門：段落標題用了 #，deep-lint 只認 ##（fix 9478）。
+h1=$(awk '
+  /^```/ { fence = !fence; next }
+  !fence && /^# (任務|驗收|不動|禁)/ { print 1 }
+' "$wo")
+if [ -n "$h1" ]; then
+  echo 'LINT WARN: 段落標題用了一級 #，deep-lint 只認 ##——改成 ##（fix 9478）'
+  warn=1
+fi
+
+# UTC 日期閘門：驗收用 date -u 組路徑，本機日誌檔名是本地時區（fix 9206/9208）。
+if printf '%s\n' "$dump" | grep -q 'date -u'; then
+  echo 'LINT WARN: 驗收用 UTC 日期組路徑，本機日誌檔名是本地時區——改 date +%F（fix 9206）'
+  warn=1
+fi
+
+[ "${fail_block:-0}" = 1 ] && { echo "LINT FAIL: no runnable 驗收 block"; exit 1; }
 [ "$warn" -eq 0 ] && echo "LINT OK"
 exit 0

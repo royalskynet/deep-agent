@@ -18,7 +18,26 @@ stop_hook_active=$(printf '%s' "$payload" | jq -r '.stop_hook_active // false')
 session_id=$(printf '%s' "$payload" | jq -r '.session_id // "unknown"')
 
 # Interactive session (no deployment gate) — nothing to enforce, no output, no log.
-if [ -z "${DEEP_TASK_FILE:-}" ] || [ "$stop_hook_active" = "true" ]; then
+if [ "$stop_hook_active" = "true" ]; then
+    exit 0
+fi
+
+# The harness sometimes strips DEEP_TASK_FILE from the hook env (09-24 失聲, zero
+# gate.log lines). Recover it from the by-cwd mirror: slug = cwd with / and . both
+# replaced by -, same as deep-run's. If that also comes up empty, log the skip so the
+# silence is at least visible, then pass through.
+if [ -z "${DEEP_TASK_FILE:-}" ]; then
+    cwd=$(printf '%s' "$payload" | jq -r '.cwd // ""')
+    if [ -n "$cwd" ]; then
+        slug=$(printf '%s' "$cwd" | sed 's/[\/.]/-/g')
+        recovered="$DC_HOME/work/.deep/by-cwd/$slug"
+        if [ -f "$recovered" ]; then
+            DEEP_TASK_FILE=$(cat "$recovered")
+        fi
+    fi
+fi
+if [ -z "${DEEP_TASK_FILE:-}" ]; then
+    echo "$(date '+%F %T') $session_id skip:no-task-file" >> "$LOG"
     exit 0
 fi
 

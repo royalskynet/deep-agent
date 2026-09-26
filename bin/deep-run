@@ -71,6 +71,12 @@ orig_hash=$(shasum -a 256 "$f" | cut -d' ' -f1)
 DEEP_TASK_FILE="$DEEP_TASK_DIR/$EPOCH-task.md"
 cp -f "$f" "$DEEP_TASK_FILE"
 chmod 444 "$DEEP_TASK_FILE"
+# R7: mirror the task path by cwd slug so the stop-gate can recover the task file
+# even when the harness strips DEEP_TASK_FILE from the hook env (09-24 失聲). Slug =
+# cwd with / and . both replaced by - (same as deep-run-inner transcript slug).
+mkdir -p "$DEEP_TASK_DIR/by-cwd"
+SLUG=$(printf '%s' "$d" | sed 's/[\/.]/-/g')
+printf '%s' "$f" > "$DEEP_TASK_DIR/by-cwd/$SLUG"
 export DEEP_TASK_FILE
 
 # deep-run is usually reached through the ~/.local/bin/deep-run symlink; resolve it

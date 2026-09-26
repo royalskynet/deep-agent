@@ -34,6 +34,9 @@ description: 派工給 deep 執行人（deepclaude/CheaperInference，沙箱外�
 - **腳本吃的環境變數要在任務檔寫死絕對路徑**。例：research skill 的 `RESEARCH_BUDGET` 不設就回退吃 cwd 的 `./.research-budget.json`，cwd 一偏就扣錯帳或完全不記帳。凡「不設就有預設值」的變數，一律當成必填。
 - **沙箱假陰性不得寫進任務檔當前提**。主 session 沙箱連不出去的 host（實測 `r.jina.ai` 回 `URLError`）在 deep 端正常 200。不要因為主 session 試不通就在任務檔裡預先排除某通道，交給 deep 實測。
 - **`verify=pass` 只證明斷言，不證明沒改壞**（實測，2026-09-26）。deep 會順手刪掉既有 env 覆寫（`process.env.X || 預設`）、改亂註解、漏 import 只在另一平台分支才炸。`# 驗收` 要含：(1) 必須保留的既有行為的 `grep -q` 斷言；(2) 至少一條真實 CLI 端到端指令（不只單元測試）。主 session 收件後仍看 `git diff`。
+- **wo-verify 失敗會印 `wo-verify FAIL line N: <cmd>`**，N＝驗收區塊內行號，先看那行是不是驗收寫錯再懷疑 deep。
+- **驗收區塊寫法**：`grep -c` 包進 `$( )` 或 `|| true`、預期失敗的指令寫 `rc=0; cmd || rc=$?; [ "$rc" = 1 ]`、不自開 pipefail、不留 `<佔位符>`。
+- **deep 端自 09-26 起驗收走 `wo-verify "$DEEP_TASK_FILE"`**，不 inline。
 
 ## 不做
 - 需要 Anthropic 推理深度的決策（設計權衡、含糊需求解讀）留主 session。
