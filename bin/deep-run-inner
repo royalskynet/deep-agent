@@ -37,13 +37,6 @@ RC="$DC_HOME/work/.deep/$EPOCH.rc"
   # R2: hash BEFORE the model runs — copy and original are identical at this point.
   orig_hash=$(shasum -a 256 "$copy" | cut -d' ' -f1)
 
-  # 2026-09-26: Claude Code 的 harness 會在子行程 env 設 CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
-  # （allowed_non_write_users hardening），繼承進來會把下面的 bypassPermissions 降級成
-  # default → deep 所有變更型指令要 approval，無頭機給不了，整輪只能回 NOT DONE。
-  # deep-run 本身就是明示授權的沙箱逃生門（見 deep-run 檔頭），且未用 --bare、
-  # creds-egress-guard PreToolUse 仍在線，故在此解除該變數，不新增漏洞。
-  unset CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
-
   # Same flags as the pre-split deep-run; the inner loop is the unchanged main body.
   deepclaude -p "$(cat "$copy")" --output-format text \
     --system-prompt-file "$DC_HOME/config/deep-system.md" \
