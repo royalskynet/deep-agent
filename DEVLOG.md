@@ -1,3 +1,25 @@
+# 2026-09-29 (prompt cache 恢復：proxy 摺疊後段 system 訊息)
+
+deep-run 的每輪請求都經過 deepclaude proxy。Claude Code 每輪會在對話尾端追加一條
+`role:system` 的 `<total_tokens>N tokens left</total_tokens>`（N 每輪不同），loop guard 的
+nudge 也走同一條管道。CheaperInference 會把所有 system 訊息提升到頂端 system prompt，
+導致 prompt 開頭每輪改變，快取只命中開頭那一小段。proxy 現在把第一個 assistant 之後的
+system 訊息改成 `<system-reminder>` 文字，併進相鄰的 user 訊息（規則同 adatoo/quail#99；
+上游 bug 為 anthropics/claude-code#90018）。實測 deep-run 8 輪：第 3 輪起 cacheR 隨前綴
+增長，命中 92–97%。loop guard 的 nudge 現在以 user 訊息最後一個 block 的形式送出，
+assistant 歷史仍然不動。
+
+Every deep-run request goes through the deepclaude proxy. Claude Code appends a
+`role:system` `<total_tokens>N tokens left</total_tokens>` message each turn (N changes),
+and the loop guard's nudges use the same channel. CheaperInference hoists every system
+message into the top system prompt, so the prompt head changed every turn and only a
+small leading slice ever hit the cache. The proxy now folds system messages that come
+after the first assistant turn into `<system-reminder>` text on the adjacent user turn
+(same rule as adatoo/quail#99; upstream bug anthropics/claude-code#90018). Measured on an
+8-turn deep-run: from turn 3 on, cacheR grows with the prefix at 92–97% hit. Loop-guard
+nudges now arrive as the last block of the last user turn; assistant history is still
+never touched.
+
 # 2026-09-16 (R3 Stop gate + R6 tmux detach)
 
 新增 `bench/`：`fixture.sh`／`run.sh`＋三張固定回歸任務（a 補權限、b 驗收矛盾、c SSOT 與
