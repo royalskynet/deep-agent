@@ -21,9 +21,10 @@ ln -sfn "$REPO/claude/commands/deep.md" ~/.claude/commands/deep.md
 
 mkdir -p ~/.deepclaude/config/hooks
 ln -sfn "$REPO/hooks/deep-stop-gate.sh" ~/.deepclaude/config/hooks/deep-stop-gate.sh
+ln -sfn "$REPO/hooks/config-dir-guard.js" ~/.deepclaude/config/hooks/config-dir-guard.js
 
 echo "Installed symlinks:"
-for t in ~/.local/bin/deep-run ~/.local/bin/deep-lint ~/.local/bin/api-probe ~/.local/bin/wo-verify ~/.claude/skills/deep ~/.claude/commands/deep.md ~/.deepclaude/config/hooks/deep-stop-gate.sh; do
+for t in ~/.local/bin/deep-run ~/.local/bin/deep-lint ~/.local/bin/api-probe ~/.local/bin/wo-verify ~/.claude/skills/deep ~/.claude/commands/deep.md ~/.deepclaude/config/hooks/deep-stop-gate.sh ~/.deepclaude/config/hooks/config-dir-guard.js; do
   ls -l "$t"
   [ -e "$t" ] || { echo "DANGLING: $t (fix 9625)"; exit 1; }
 done
