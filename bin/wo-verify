@@ -27,7 +27,7 @@ script=$(awk '
 [ "${2:-}" = "--dump" ] && { printf '%s\n' "$script"; exit 0; }
 if [ "$dry" -eq 1 ]; then printf '%s\n' "$script" | bash -n; exit $?; fi
 # 不開 pipefail：`cmd | grep -q` 命中即關管，cmd 續寫吃 SIGPIPE → 141 假失敗（09-22 實證 launchctl print/claude mcp get）
-printf 'set -e\n%s\n' "$script" | timeout 600 bash 2>&1
+printf 'set -e\ntrap '\''echo "wo-verify FAIL line $((LINENO-2)): $BASH_COMMAND"'\'' ERR\n%s\n' "$script" | timeout 600 bash 2>&1
 rc=${PIPESTATUS[1]}
 echo "--- wo-verify rc=$rc"
 exit "$rc"

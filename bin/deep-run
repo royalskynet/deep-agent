@@ -33,8 +33,8 @@ command -v deepclaude >/dev/null || { echo "deep-run: deepclaude not on PATH" >&
 # traffic. Pin the cheap model directly and hand the main loop the same harness the
 # subagent path gets, plus the loop guard (see repo/proxy/model-proxy.js).
 export CHEAPERINFERENCE_MODEL="${CHEAPERINFERENCE_MODEL:-deepseek-v4-flash-0731}"
-# ci 第一優先（2026-09-24 實證 flash-0731／pro-0813 皆 http=200）。要走 openrouter：
-# CHEAPCLAUDE_DEFAULT_BACKEND=or deep-run ...（模型由 OPENROUTER_MODEL 決定）
+# ci 唯一後端（CHEAPERINFERENCE_API_KEY）。OpenRouter key 專屬其他用途（Jev／OpenClaw
+# free），bin/deepclaude 會 unset OPENROUTER_API_KEY，or 後端會 fail loud。
 export OPENROUTER_MODEL="${OPENROUTER_MODEL:-deepseek/deepseek-v4-flash-0731}"
 export CHEAPCLAUDE_DEFAULT_BACKEND="${CHEAPCLAUDE_DEFAULT_BACKEND:-ci}"
 export DC_MAIN_HARNESS_FILE="${DC_MAIN_HARNESS_FILE:-$DC_HOME/deep-agent/deep-harness.md}"
@@ -64,13 +64,22 @@ echo "$(date '+%F %T') deep-run start $f cwd=$d" >> "$WLOG"
 # R2: snapshot the task file before handing it to deepclaude — hash the copy target,
 # copy it read-only into $DC_HOME/work/.deep so deep/proxy cannot alter the contract
 # the caller (and later the mechanical judge) relies on. deepclaude reads the copy.
-EPOCH=$(date +%s)
+# R8: 秒數加 $$（本進程 PID）尾綴——兩個 deep-run 同一秒並發時，純秒數會撞同名
+# tmux session（duplicate session）與 task 檔（後者靜默覆蓋、wait-for 管道掛死，
+# 2026-09-29 WP-A 21 格漏派兩次）。同秒不同進程 PID 必不同。
+EPOCH="$(date +%s)-$$"
 DEEP_TASK_DIR="$DC_HOME/work/.deep"
 mkdir -p "$DEEP_TASK_DIR"
 orig_hash=$(shasum -a 256 "$f" | cut -d' ' -f1)
 DEEP_TASK_FILE="$DEEP_TASK_DIR/$EPOCH-task.md"
 cp -f "$f" "$DEEP_TASK_FILE"
 chmod 444 "$DEEP_TASK_FILE"
+# R7: mirror the task path by cwd slug so the stop-gate can recover the task file
+# even when the harness strips DEEP_TASK_FILE from the hook env (09-24 失聲). Slug =
+# cwd with / and . both replaced by - (same as deep-run-inner transcript slug).
+mkdir -p "$DEEP_TASK_DIR/by-cwd"
+SLUG=$(printf '%s' "$d" | sed 's/[\/.]/-/g')
+printf '%s' "$f" > "$DEEP_TASK_DIR/by-cwd/$SLUG"
 export DEEP_TASK_FILE
 
 # deep-run is usually reached through the ~/.local/bin/deep-run symlink; resolve it
